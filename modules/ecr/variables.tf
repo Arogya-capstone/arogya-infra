@@ -1,0 +1,8 @@
+variable "project" { type = string }
+variable "environment" { type = string }
+variable "owner" { type = string }
+variable "kms_key_arn" { type = string }
+variable "repositories" {
+  type    = list(string)
+  default = ["user-service", "appointment-service", "health-service", "document-service", "rag-service", "rag-worker", "frontend"]
+}

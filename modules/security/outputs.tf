@@ -1,0 +1,10 @@
+output "kms_key_arn" { value = aws_kms_key.main.arn }
+output "kms_key_id" { value = aws_kms_key.main.key_id }
+output "db_credentials_secret_arn" { value = aws_secretsmanager_secret.db_credentials.arn }
+output "jwt_private_key_secret_arn" { value = aws_secretsmanager_secret.jwt_private_key.arn }
+output "jwt_public_key_secret_arn" { value = aws_secretsmanager_secret.jwt_public_key.arn }
+output "documents_bucket_name" { value = aws_s3_bucket.documents.id }
+output "documents_bucket_arn" { value = aws_s3_bucket.documents.arn }
+output "ssm_parameter_prefix" { value = "/${var.project}/${var.environment}" }
+output "bedrock_guardrail_arn" { value = aws_bedrock_guardrail.medical.guardrail_arn }
+output "groq_api_key_secret_arn" { value = aws_secretsmanager_secret.groq_api_key.arn }

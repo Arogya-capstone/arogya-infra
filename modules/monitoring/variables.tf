@@ -1,0 +1,15 @@
+variable "project" { type = string }
+variable "environment" { type = string }
+variable "owner" { type = string }
+variable "region" { type = string }
+variable "account_id" { type = string }
+variable "kms_key_arn" { type = string }
+variable "rag_processing_dlq_arn" { type = string }
+variable "rag_processing_dlq_name" { type = string }
+variable "appointment_events_dlq_arn" { type = string }
+variable "appointment_events_dlq_name" { type = string }
+variable "appointment_events_queue_arn" { type = string }
+variable "ops_email" { type = string }
+variable "ses_sender_email" { type = string }
+variable "oidc_provider_arn" { type = string }
+variable "oidc_provider" { type = string }

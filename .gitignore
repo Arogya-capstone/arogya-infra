@@ -1,0 +1,20 @@
+# Terraform state — never commit
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+tfplan
+*.tfplan
+
+# Sensitive files
+*.pem
+*.key
+.env
+.env.*
+credentials
+terraform.tfvars.local
+
+# OS
+.DS_Store
+Thumbs.db

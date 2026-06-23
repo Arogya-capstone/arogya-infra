@@ -1,0 +1,143 @@
+name: Terraform
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths: ["environments/**", "modules/**"]
+  push:
+    branches: [develop, main]
+    paths: ["environments/**", "modules/**"]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: "1.10.0"
+
+jobs:
+  # ── Plan (runs on every PR to develop or main) ────────────────────────────
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        environment: [dev, prod]
+    defaults:
+      run:
+        working-directory: environments/${{ matrix.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-${{ matrix.environment }}-github-actions
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -var-file=terraform.tfvars -out=tfplan -no-color
+        continue-on-error: true
+
+      - name: Post Plan as PR Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `### Terraform Plan — \`${{ matrix.environment }}\`
+            \`\`\`
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      - name: Fail if plan failed
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+  # ── Apply Dev (auto on merge to develop) ──────────────────────────────────
+  apply-dev:
+    name: Apply — dev
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    environment: dev
+    defaults:
+      run:
+        working-directory: environments/dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-dev-github-actions
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - run: terraform init
+      - run: terraform validate
+      - run: terraform plan -var-file=terraform.tfvars -out=tfplan
+      - run: terraform apply -auto-approve tfplan
+
+      - name: Summary
+        run: |
+          echo "## ✅ Dev infra applied successfully" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # ── Apply Prod (manual approval required) ─────────────────────────────────
+  apply-prod:
+    name: Apply — prod
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: prod        # ← GitHub environment with required reviewer
+    defaults:
+      run:
+        working-directory: environments/prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-prod-github-actions
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - run: terraform init
+      - run: terraform validate
+      - run: terraform plan -var-file=terraform.tfvars -out=tfplan
+      - run: terraform apply -auto-approve tfplan
+
+      - name: Summary
+        run: |
+          echo "## ✅ Prod infra applied successfully" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
