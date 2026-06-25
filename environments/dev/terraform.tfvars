@@ -1,4 +1,4 @@
-project    = "arogya"
+﻿project    = "arogya"
 environment = "dev"
 owner      = "arogya-team"
 region     = "us-east-1"
@@ -28,5 +28,5 @@ github_org  = "Arogya-capstone"
 github_repo = "arogya-app"
 
 # Notifications
-ops_email        = "neerajbalamurali@gmail.com"
-ses_sender_email = "neerajbalamurali@gmail.com"
+ops_email        = "medilinkhub.team@gmail.com"
+ses_sender_email = "medilinkhub.team@gmail.com"
