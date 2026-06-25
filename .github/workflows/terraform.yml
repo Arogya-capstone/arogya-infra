@@ -105,6 +105,53 @@ jobs:
       - run: terraform apply -auto-approve tfplan
 
       - name: Summary
+        if: always()
         run: |
-          echo "## ✅ Prod infra applied successfully" >> $GITHUB_STEP_SUMMARY
+          echo "## ${{ job.status == 'success' && 'Prod infra applied successfully' || 'Prod infra apply FAILED' }}" >> $GITHUB_STEP_SUMMARY
           echo "Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Send apply success email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[APPLIED] Arogya Terraform prod — ${{ github.sha }}"
+          to: medilinkhub.team@gmail.com
+          from: Arogya Infra <medilinkhub.team@gmail.com>
+          body: |
+            Arogya Terraform Apply — SUCCESS
+            ─────────────────────────────────
+            Environment: prod
+            Commit:      ${{ github.sha }}
+            Actor:       ${{ github.actor }}
+
+            Infrastructure changes applied to AWS prod.
+
+            View run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Send apply failure email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[FAILED] Arogya Terraform prod — ${{ github.sha }}"
+          to: medilinkhub.team@gmail.com
+          from: Arogya Infra <medilinkhub.team@gmail.com>
+          body: |
+            Arogya Terraform Apply — FAILED
+            ────────────────────────────────
+            Environment: prod
+            Commit:      ${{ github.sha }}
+            Actor:       ${{ github.actor }}
+
+            terraform apply failed for prod. Review the logs immediately.
+
+            View run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
