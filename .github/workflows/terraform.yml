@@ -24,7 +24,7 @@ jobs:
     if: github.event_name == 'pull_request'
     strategy:
       matrix:
-        environment: [dev, prod]
+        environment: [prod]
     defaults:
       run:
         working-directory: environments/${{ matrix.environment }}
@@ -75,39 +75,6 @@ jobs:
       - name: Fail if plan failed
         if: steps.plan.outcome == 'failure'
         run: exit 1
-
-  # ── Apply Dev (auto on merge to develop) ──────────────────────────────────
-  apply-dev:
-    name: Apply — dev
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-    environment: dev
-    defaults:
-      run:
-        working-directory: environments/dev
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-dev-github-actions
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - run: terraform init
-      - run: terraform validate
-      - run: terraform plan -var-file=terraform.tfvars -out=tfplan
-      - run: terraform apply -auto-approve tfplan
-
-      - name: Summary
-        run: |
-          echo "## ✅ Dev infra applied successfully" >> $GITHUB_STEP_SUMMARY
-          echo "Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
 
   # ── Apply Prod (manual approval required) ─────────────────────────────────
   apply-prod:
