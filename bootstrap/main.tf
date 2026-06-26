@@ -18,9 +18,19 @@ provider "aws" {
   region = var.region
 }
 
-variable "account_id" { type = string }
-variable "region" { type = string; default = "us-east-1" }
-variable "project" { type = string; default = "arogya" }
+variable "account_id" {
+  type = string
+}
+
+variable "region" {
+  type    = string
+  default = "us-east-1"
+}
+
+variable "project" {
+  type    = string
+  default = "arogya"
+}
 
 locals {
   bucket_name = "${var.project}-tf-state-${var.account_id}"
