@@ -21,7 +21,7 @@ resource "aws_db_subnet_group" "rds" {
 
 resource "aws_security_group" "rds" {
   name        = "${var.project}-${var.environment}-rds-sg"
-  description = "RDS PostgreSQL — allow only from EKS nodes"
+  description = "RDS PostgreSQL - allow only from EKS nodes"
   vpc_id      = var.vpc_id
 
   ingress {
