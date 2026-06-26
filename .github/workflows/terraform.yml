@@ -2,10 +2,10 @@ name: Terraform
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
     paths: ["environments/**", "modules/**"]
   push:
-    branches: [develop, main]
+    branches: [main]
     paths: ["environments/**", "modules/**"]
 
 permissions:
