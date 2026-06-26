@@ -92,22 +92,22 @@ module "rds" {
 
 # ── Monitoring (CloudWatch + alarms + Lambdas) ────────────────────────────────
 module "monitoring" {
-  source                      = "../../modules/monitoring"
-  project                     = var.project
-  environment                 = var.environment
-  owner                       = var.owner
-  region                      = var.region
-  account_id                  = var.account_id
-  kms_key_arn                 = module.security.kms_key_arn
-  rag_processing_dlq_arn      = module.sqs.rag_processing_dlq_arn
-  rag_processing_dlq_name     = "${var.project}-${var.environment}-rag-processing-dlq"
-  appointment_events_dlq_arn  = module.sqs.appointment_events_dlq_arn
-  appointment_events_dlq_name = "${var.project}-${var.environment}-appointment-events-dlq"
+  source                       = "../../modules/monitoring"
+  project                      = var.project
+  environment                  = var.environment
+  owner                        = var.owner
+  region                       = var.region
+  account_id                   = var.account_id
+  kms_key_arn                  = module.security.kms_key_arn
+  rag_processing_dlq_arn       = module.sqs.rag_processing_dlq_arn
+  rag_processing_dlq_name      = "${var.project}-${var.environment}-rag-processing-dlq"
+  appointment_events_dlq_arn   = module.sqs.appointment_events_dlq_arn
+  appointment_events_dlq_name  = "${var.project}-${var.environment}-appointment-events-dlq"
   appointment_events_queue_arn = module.sqs.appointment_events_queue_arn
-  ops_email                   = var.ops_email
-  ses_sender_email            = var.ses_sender_email
-  oidc_provider_arn           = module.eks.oidc_provider_arn
-  oidc_provider               = module.eks.oidc_provider
+  ops_email                    = var.ops_email
+  ses_sender_email             = var.ses_sender_email
+  oidc_provider_arn            = module.eks.oidc_provider_arn
+  oidc_provider                = module.eks.oidc_provider
 }
 
 # ── SQS ───────────────────────────────────────────────────────────────────────

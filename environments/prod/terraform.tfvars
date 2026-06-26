@@ -1,4 +1,4 @@
-﻿project     = "arogya"
+project     = "arogya"
 environment = "prod"
 owner       = "arogya-team"
 region      = "us-east-1"

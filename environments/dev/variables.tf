@@ -18,4 +18,8 @@ variable "github_org" { type = string }
 variable "github_repo" { type = string }
 variable "ops_email" { type = string }
 variable "ses_sender_email" { type = string }
-variable "groq_api_key" { type = string; sensitive = true; default = "REPLACE_WITH_GROQ_KEY" }
+variable "groq_api_key" {
+  type      = string
+  sensitive = true
+  default   = "REPLACE_WITH_GROQ_KEY"
+}

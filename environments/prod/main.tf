@@ -21,22 +21,56 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
-# ── Security (KMS, Secrets Manager, S3, CloudTrail) ──────────────────────────
+# ── KMS Key (root-level to break module dependency cycles) ────────────────────
+resource "aws_kms_key" "main" {
+  description             = "${var.project} ${var.environment} — encryption key for RDS, S3, SQS, Secrets Manager"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+  rotation_period_in_days = 365
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "RootFullAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${var.account_id}:root" }
+        Action    = "kms:*"
+        Resource  = "*"
+      },
+      {
+        Sid       = "CloudWatchLogs"
+        Effect    = "Allow"
+        Principal = { Service = "logs.${var.region}.amazonaws.com" }
+        Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"]
+        Resource  = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_kms_alias" "main" {
+  name          = "alias/${var.project}-${var.environment}-key"
+  target_key_id = aws_kms_key.main.key_id
+}
+
+locals {
+  kms_key_arn = aws_kms_key.main.arn
+  ssm_prefix  = "/${var.project}/${var.environment}"
+}
+
+# ── Security (Secrets Manager, S3, CloudTrail, Bedrock, SES, SSM) ─────────────
 module "security" {
-  source                       = "../../modules/security"
-  project                      = var.project
-  environment                  = var.environment
-  owner                        = var.owner
-  region                       = var.region
-  account_id                   = var.account_id
-  db_password                  = module.rds.db_password
-  ses_sender_email             = var.ses_sender_email
-  namespace                    = var.namespace
-  rag_processing_queue_url     = module.sqs.rag_processing_queue_url
-  appointment_events_queue_url = module.sqs.appointment_events_queue_url
-  rds_endpoint                 = module.rds.db_endpoint
-  groq_api_key                 = var.groq_api_key
-  depends_on                   = [module.sqs, module.rds]
+  source           = "../../modules/security"
+  project          = var.project
+  environment      = var.environment
+  owner            = var.owner
+  region           = var.region
+  account_id       = var.account_id
+  kms_key_arn      = local.kms_key_arn
+  ses_sender_email = var.ses_sender_email
+  namespace        = var.namespace
+  groq_api_key     = var.groq_api_key
 }
 
 # ── VPC ───────────────────────────────────────────────────────────────────────
@@ -64,7 +98,7 @@ module "eks" {
   node_min_size      = var.node_min_size
   node_max_size      = var.node_max_size
   node_desired_size  = var.node_desired_size
-  kms_key_arn        = module.security.kms_key_arn
+  kms_key_arn        = local.kms_key_arn
 }
 
 # ── ECR ───────────────────────────────────────────────────────────────────────
@@ -73,7 +107,7 @@ module "ecr" {
   project     = var.project
   environment = var.environment
   owner       = var.owner
-  kms_key_arn = module.security.kms_key_arn
+  kms_key_arn = local.kms_key_arn
 }
 
 # ── RDS ───────────────────────────────────────────────────────────────────────
@@ -85,39 +119,54 @@ module "rds" {
   vpc_id         = module.vpc.vpc_id
   subnet_ids     = module.vpc.private_db_subnet_ids
   eks_node_sg_id = module.eks.node_security_group_id
-  kms_key_arn    = module.security.kms_key_arn
+  kms_key_arn    = local.kms_key_arn
   instance_class = var.rds_instance_class
   multi_az       = var.rds_multi_az
 }
 
-# ── Monitoring (CloudWatch + alarms + Lambdas) ────────────────────────────────
-module "monitoring" {
-  source                      = "../../modules/monitoring"
-  project                     = var.project
-  environment                 = var.environment
-  owner                       = var.owner
-  region                      = var.region
-  account_id                  = var.account_id
-  kms_key_arn                 = module.security.kms_key_arn
-  rag_processing_dlq_arn      = module.sqs.rag_processing_dlq_arn
-  rag_processing_dlq_name     = "${var.project}-${var.environment}-rag-processing-dlq"
-  appointment_events_dlq_arn  = module.sqs.appointment_events_dlq_arn
-  appointment_events_dlq_name = "${var.project}-${var.environment}-appointment-events-dlq"
-  appointment_events_queue_arn = module.sqs.appointment_events_queue_arn
-  ops_email                   = var.ops_email
-  ses_sender_email            = var.ses_sender_email
-  oidc_provider_arn           = module.eks.oidc_provider_arn
-  oidc_provider               = module.eks.oidc_provider
-}
-
 # ── SQS ───────────────────────────────────────────────────────────────────────
 module "sqs" {
-  source          = "../../modules/sqs"
-  project         = var.project
-  environment     = var.environment
-  owner           = var.owner
-  kms_key_arn     = module.security.kms_key_arn
-  lambda_role_arn = module.monitoring.lambda_notification_role_arn
+  source      = "../../modules/sqs"
+  project     = var.project
+  environment = var.environment
+  owner       = var.owner
+  kms_key_arn = local.kms_key_arn
+}
+
+# ── Monitoring (CloudWatch + alarms + Lambda) ─────────────────────────────────
+module "monitoring" {
+  source                       = "../../modules/monitoring"
+  project                      = var.project
+  environment                  = var.environment
+  owner                        = var.owner
+  region                       = var.region
+  account_id                   = var.account_id
+  kms_key_arn                  = local.kms_key_arn
+  rag_processing_dlq_arn       = module.sqs.rag_processing_dlq_arn
+  rag_processing_dlq_name      = "${var.project}-${var.environment}-rag-processing-dlq"
+  appointment_events_dlq_arn   = module.sqs.appointment_events_dlq_arn
+  appointment_events_dlq_name  = "${var.project}-${var.environment}-appointment-events-dlq"
+  appointment_events_queue_arn = module.sqs.appointment_events_queue_arn
+  ops_email                    = var.ops_email
+  ses_sender_email             = var.ses_sender_email
+  oidc_provider_arn            = module.eks.oidc_provider_arn
+  oidc_provider                = module.eks.oidc_provider
+}
+
+# ── SQS Lambda queue policy (root-level to break monitoring↔sqs cycle) ────────
+resource "aws_sqs_queue_policy" "lambda_appointment" {
+  queue_url = module.sqs.appointment_events_queue_id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { AWS = module.monitoring.lambda_notification_role_arn }
+        Action    = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+        Resource  = module.sqs.appointment_events_queue_arn
+      }
+    ]
+  })
 }
 
 # ── IRSA ─────────────────────────────────────────────────────────────────────
@@ -129,7 +178,7 @@ module "irsa" {
   namespace                    = var.namespace
   oidc_provider                = module.eks.oidc_provider
   oidc_provider_arn            = module.eks.oidc_provider_arn
-  kms_key_arn                  = module.security.kms_key_arn
+  kms_key_arn                  = local.kms_key_arn
   region                       = var.region
   account_id                   = var.account_id
   db_credentials_secret_arn    = module.security.db_credentials_secret_arn
@@ -143,4 +192,32 @@ module "irsa" {
   appointment_events_queue_arn = module.sqs.appointment_events_queue_arn
   github_org                   = var.github_org
   github_repo                  = var.github_repo
+}
+
+# ── Cross-module SSM Parameters (root-level to break security↔sqs/rds cycles) ─
+resource "aws_ssm_parameter" "sqs_rag_queue_url" {
+  name  = "${local.ssm_prefix}/sqs-rag-queue-url"
+  type  = "String"
+  value = module.sqs.rag_processing_queue_url
+}
+
+resource "aws_ssm_parameter" "sqs_appointment_queue_url" {
+  name  = "${local.ssm_prefix}/sqs-appointment-queue-url"
+  type  = "String"
+  value = module.sqs.appointment_events_queue_url
+}
+
+resource "aws_ssm_parameter" "rds_endpoint" {
+  name  = "${local.ssm_prefix}/rds-endpoint"
+  type  = "String"
+  value = module.rds.db_endpoint
+}
+
+# ── DB credentials secret version (root-level to break security↔rds cycle) ───
+resource "aws_secretsmanager_secret_version" "db_credentials" {
+  secret_id = module.security.db_credentials_secret_arn
+  secret_string = jsonencode({
+    password = module.rds.db_password
+    username = "dbadmin"
+  })
 }
