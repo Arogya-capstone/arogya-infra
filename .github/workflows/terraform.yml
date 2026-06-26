@@ -7,6 +7,12 @@ on:
   push:
     branches: [main, release]
     paths: ["environments/**", "modules/**"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to apply (prod)"
+        required: true
+        default: "prod"
 
 permissions:
   id-token: write
@@ -80,7 +86,7 @@ jobs:
   apply-prod:
     name: Apply — prod
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     environment: prod        # ← GitHub environment with required reviewer
     defaults:
       run:
