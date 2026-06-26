@@ -5,62 +5,20 @@ locals {
     Owner       = var.owner
     ManagedBy   = "terraform"
   }
-}
-
-# KMS Customer-Managed Key
-resource "aws_kms_key" "main" {
-  description             = "${var.project} ${var.environment} — encryption key for RDS, S3, SQS, Secrets Manager"
-  deletion_window_in_days = 30
-  enable_key_rotation     = true
-  rotation_period_in_days = 365
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "RootFullAccess"
-        Effect    = "Allow"
-        Principal = { AWS = "arn:aws:iam::${var.account_id}:root" }
-        Action    = "kms:*"
-        Resource  = "*"
-      },
-      {
-        Sid       = "CloudWatchLogs"
-        Effect    = "Allow"
-        Principal = { Service = "logs.${var.region}.amazonaws.com" }
-        Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"]
-        Resource  = "*"
-      }
-    ]
-  })
-
-  tags = merge(local.common_tags, { Name = "${var.project}-${var.environment}-kms-key" })
-}
-
-resource "aws_kms_alias" "main" {
-  name          = "alias/${var.project}-${var.environment}-key"
-  target_key_id = aws_kms_key.main.key_id
+  ssm_prefix = "/${var.project}/${var.environment}"
 }
 
 # Secrets Manager
 resource "aws_secretsmanager_secret" "db_credentials" {
   name                    = "${var.project}/${var.environment}/db-credentials"
-  kms_key_id              = aws_kms_key.main.arn
+  kms_key_id              = var.kms_key_arn
   recovery_window_in_days = 7
   tags                    = merge(local.common_tags, { Name = "${var.project}-${var.environment}-db-credentials" })
 }
 
-resource "aws_secretsmanager_secret_version" "db_credentials" {
-  secret_id = aws_secretsmanager_secret.db_credentials.id
-  secret_string = jsonencode({
-    password = var.db_password
-    username = "dbadmin"
-  })
-}
-
 resource "aws_secretsmanager_secret" "jwt_private_key" {
   name                    = "${var.project}/${var.environment}/jwt-private-key"
-  kms_key_id              = aws_kms_key.main.arn
+  kms_key_id              = var.kms_key_arn
   recovery_window_in_days = 7
   tags                    = merge(local.common_tags, { Name = "${var.project}-${var.environment}-jwt-private-key" })
 }
@@ -72,7 +30,7 @@ resource "aws_secretsmanager_secret_version" "jwt_private_key" {
 
 resource "aws_secretsmanager_secret" "jwt_public_key" {
   name                    = "${var.project}/${var.environment}/jwt-public-key"
-  kms_key_id              = aws_kms_key.main.arn
+  kms_key_id              = var.kms_key_arn
   recovery_window_in_days = 7
   tags                    = merge(local.common_tags, { Name = "${var.project}-${var.environment}-jwt-public-key" })
 }
@@ -82,10 +40,9 @@ resource "aws_secretsmanager_secret_version" "jwt_public_key" {
   secret_string = var.jwt_public_key
 }
 
-# Groq API key — fallback LLM when Bedrock is throttled or unavailable
 resource "aws_secretsmanager_secret" "groq_api_key" {
   name                    = "${var.project}/${var.environment}/groq-api-key"
-  kms_key_id              = aws_kms_key.main.arn
+  kms_key_id              = var.kms_key_arn
   recovery_window_in_days = 7
   tags                    = merge(local.common_tags, { Name = "${var.project}-${var.environment}-groq-api-key" })
 }
@@ -137,7 +94,7 @@ resource "aws_cloudtrail" "main" {
   include_global_service_events = true
   is_multi_region_trail         = true
   enable_log_file_validation    = true
-  kms_key_id                    = aws_kms_key.main.arn
+  kms_key_id                    = var.kms_key_arn
   tags                          = merge(local.common_tags, { Name = "${var.project}-${var.environment}-trail" })
 }
 
@@ -153,7 +110,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "documents" {
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm     = "aws:kms"
-      kms_master_key_id = aws_kms_key.main.arn
+      kms_master_key_id = var.kms_key_arn
     }
   }
 }
@@ -210,38 +167,12 @@ resource "aws_bedrock_guardrail_version" "medical" {
   description   = "Active version for ${var.environment}"
 }
 
-# ── SSM Parameter Store — non-sensitive infra config (Terraform-owned) ────────
-# Separating config from secrets: SSM = free, config values; SM = paid, sensitive only
-locals {
-  ssm_prefix = "/${var.project}/${var.environment}"
-}
-
+# ── SSM Parameters (non-cross-module values only) ─────────────────────────────
 resource "aws_ssm_parameter" "s3_bucket_name" {
   name  = "${local.ssm_prefix}/s3-bucket-name"
   type  = "String"
-  value = "${var.project}-${var.environment}-documents-${var.account_id}"
+  value = aws_s3_bucket.documents.id
   tags  = merge(local.common_tags, { Name = "s3-bucket-name" })
-}
-
-resource "aws_ssm_parameter" "sqs_rag_queue_url" {
-  name  = "${local.ssm_prefix}/sqs-rag-queue-url"
-  type  = "String"
-  value = var.rag_processing_queue_url
-  tags  = merge(local.common_tags, { Name = "sqs-rag-queue-url" })
-}
-
-resource "aws_ssm_parameter" "sqs_appointment_queue_url" {
-  name  = "${local.ssm_prefix}/sqs-appointment-queue-url"
-  type  = "String"
-  value = var.appointment_events_queue_url
-  tags  = merge(local.common_tags, { Name = "sqs-appointment-queue-url" })
-}
-
-resource "aws_ssm_parameter" "rds_endpoint" {
-  name  = "${local.ssm_prefix}/rds-endpoint"
-  type  = "String"
-  value = var.rds_endpoint
-  tags  = merge(local.common_tags, { Name = "rds-endpoint" })
 }
 
 resource "aws_ssm_parameter" "bedrock_guardrail_id" {

@@ -1,5 +1,4 @@
-output "kms_key_arn" { value = aws_kms_key.main.arn }
-output "kms_key_id" { value = aws_kms_key.main.key_id }
+output "kms_key_arn" { value = var.kms_key_arn }
 output "db_credentials_secret_arn" { value = aws_secretsmanager_secret.db_credentials.arn }
 output "jwt_private_key_secret_arn" { value = aws_secretsmanager_secret.jwt_private_key.arn }
 output "jwt_public_key_secret_arn" { value = aws_secretsmanager_secret.jwt_public_key.arn }
