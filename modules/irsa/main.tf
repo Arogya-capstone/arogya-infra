@@ -50,27 +50,27 @@ data "aws_iam_policy_document" "trust" {
 # Common policy — Secrets Manager (sensitive) + SSM (config) + CloudWatch + KMS
 data "aws_iam_policy_document" "common" {
   statement {
-    sid     = "SecretsManager"
-    effect  = "Allow"
-    actions = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+    sid       = "SecretsManager"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
     resources = local.common_secret_arns
   }
   statement {
-    sid     = "SSMParameterStore"
-    effect  = "Allow"
-    actions = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+    sid       = "SSMParameterStore"
+    effect    = "Allow"
+    actions   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
     resources = ["arn:aws:ssm:${var.region}:${var.account_id}:parameter${var.ssm_parameter_prefix}/*"]
   }
   statement {
-    sid     = "CloudWatchLogs"
-    effect  = "Allow"
-    actions = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
+    sid       = "CloudWatchLogs"
+    effect    = "Allow"
+    actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
     resources = ["arn:aws:logs:${var.region}:${var.account_id}:log-group:/${var.project}/*"]
   }
   statement {
-    sid     = "KMSDecrypt"
-    effect  = "Allow"
-    actions = ["kms:Decrypt", "kms:DescribeKey", "kms:GenerateDataKey"]
+    sid       = "KMSDecrypt"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt", "kms:DescribeKey", "kms:GenerateDataKey"]
     resources = [var.kms_key_arn]
   }
 }
@@ -216,9 +216,9 @@ resource "aws_iam_role_policy" "rag_worker_sqs" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "SQSConsume"
-      Effect = "Allow"
-      Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"]
+      Sid      = "SQSConsume"
+      Effect   = "Allow"
+      Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"]
       Resource = [var.rag_processing_queue_arn, var.rag_processing_dlq_arn]
     }]
   })
@@ -230,9 +230,9 @@ resource "aws_iam_role_policy" "rag_worker_textract" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "TextractSync"
-        Effect = "Allow"
-        Action = ["textract:DetectDocumentText", "textract:AnalyzeDocument", "textract:StartDocumentTextDetection", "textract:GetDocumentTextDetection"]
+        Sid      = "TextractSync"
+        Effect   = "Allow"
+        Action   = ["textract:DetectDocumentText", "textract:AnalyzeDocument", "textract:StartDocumentTextDetection", "textract:GetDocumentTextDetection"]
         Resource = "*"
       },
       {
@@ -292,9 +292,9 @@ resource "aws_iam_role" "github_actions" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
-      Action = "sts:AssumeRoleWithWebIdentity"
+      Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringLike = {
           "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_repo}:*"
@@ -316,21 +316,21 @@ resource "aws_iam_role_policy" "github_actions" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ECRAuth"
-        Effect = "Allow"
-        Action = ["ecr:GetAuthorizationToken"]
+        Sid      = "ECRAuth"
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
         Resource = "*"
       },
       {
-        Sid    = "ECRPush"
-        Effect = "Allow"
-        Action = ["ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:PutImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload"]
+        Sid      = "ECRPush"
+        Effect   = "Allow"
+        Action   = ["ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:PutImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload"]
         Resource = "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.project}/*"
       },
       {
-        Sid    = "EKSDescribe"
-        Effect = "Allow"
-        Action = ["eks:DescribeCluster"]
+        Sid      = "EKSDescribe"
+        Effect   = "Allow"
+        Action   = ["eks:DescribeCluster"]
         Resource = "arn:aws:eks:${var.region}:${var.account_id}:cluster/*"
       }
     ]

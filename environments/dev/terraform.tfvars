@@ -1,8 +1,8 @@
-﻿project    = "arogya"
+project     = "arogya"
 environment = "dev"
-owner      = "arogya-team"
-region     = "us-east-1"
-account_id = "371454942267"
+owner       = "arogya-team"
+region      = "us-east-1"
+account_id  = "371454942267"
 
 # VPC
 vpc_cidr = "10.0.0.0/16"

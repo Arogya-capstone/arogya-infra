@@ -184,15 +184,15 @@ resource "aws_iam_role_policy" "lambda_aiops" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "CloudWatchLogsRead"
-        Effect = "Allow"
-        Action = ["logs:FilterLogEvents", "logs:GetLogEvents", "logs:DescribeLogStreams", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Sid      = "CloudWatchLogsRead"
+        Effect   = "Allow"
+        Action   = ["logs:FilterLogEvents", "logs:GetLogEvents", "logs:DescribeLogStreams", "logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = "arn:aws:logs:${var.region}:${var.account_id}:log-group:/${var.project}/*:*"
       },
       {
-        Sid    = "BedrockInvoke"
-        Effect = "Allow"
-        Action = ["bedrock:InvokeModel"]
+        Sid      = "BedrockInvoke"
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel"]
         Resource = ["arn:aws:bedrock:${var.region}::foundation-model/amazon.nova-lite-v1:0"]
       },
       {

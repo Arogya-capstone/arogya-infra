@@ -18,18 +18,18 @@ resource "aws_kms_key" "main" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "RootFullAccess"
-        Effect = "Allow"
+        Sid       = "RootFullAccess"
+        Effect    = "Allow"
         Principal = { AWS = "arn:aws:iam::${var.account_id}:root" }
-        Action   = "kms:*"
-        Resource = "*"
+        Action    = "kms:*"
+        Resource  = "*"
       },
       {
-        Sid    = "CloudWatchLogs"
-        Effect = "Allow"
+        Sid       = "CloudWatchLogs"
+        Effect    = "Allow"
         Principal = { Service = "logs.${var.region}.amazonaws.com" }
-        Action   = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"]
-        Resource = "*"
+        Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"]
+        Resource  = "*"
       }
     ]
   })

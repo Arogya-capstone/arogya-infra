@@ -27,9 +27,9 @@ resource "aws_subnet" "public" {
   availability_zone       = var.azs[count.index]
   map_public_ip_on_launch = true
   tags = merge(local.common_tags, {
-    Name                                            = "${var.project}-${var.environment}-public-${var.azs[count.index]}"
-    "kubernetes.io/cluster/${var.cluster_name}"     = "shared"
-    "kubernetes.io/role/elb"                        = "1"
+    Name                                        = "${var.project}-${var.environment}-public-${var.azs[count.index]}"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+    "kubernetes.io/role/elb"                    = "1"
   })
 }
 
@@ -40,9 +40,9 @@ resource "aws_subnet" "private_app" {
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10)
   availability_zone = var.azs[count.index]
   tags = merge(local.common_tags, {
-    Name                                            = "${var.project}-${var.environment}-private-app-${var.azs[count.index]}"
-    "kubernetes.io/cluster/${var.cluster_name}"     = "shared"
-    "kubernetes.io/role/internal-elb"               = "1"
+    Name                                        = "${var.project}-${var.environment}-private-app-${var.azs[count.index]}"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+    "kubernetes.io/role/internal-elb"           = "1"
   })
 }
 
