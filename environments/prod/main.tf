@@ -44,6 +44,13 @@ resource "aws_kms_key" "main" {
         Principal = { Service = "logs.${var.region}.amazonaws.com" }
         Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"]
         Resource  = "*"
+      },
+      {
+        Sid       = "CloudTrail"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"]
+        Resource  = "*"
       }
     ]
   })
