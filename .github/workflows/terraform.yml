@@ -59,18 +59,19 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        run: terraform plan -var-file=terraform.tfvars -out=tfplan -no-color
+        run: |
+          terraform plan -var-file=terraform.tfvars -out=tfplan -no-color 2>&1 | tee /tmp/tfplan.txt
+          exit ${PIPESTATUS[0]}
         continue-on-error: true
 
       - name: Post Plan as PR Comment
         uses: actions/github-script@v7
-        env:
-          PLAN_OUTPUT: ${{ steps.plan.outputs.stdout }}
         with:
           script: |
-            const plan = process.env.PLAN_OUTPUT || '(no output)';
-            const truncated = plan.length > 60000 ? plan.slice(0, 60000) + '\n...(truncated)' : plan;
-            const output = `### Terraform Plan — \`${{ matrix.environment }}\`\n\`\`\`\n${truncated}\n\`\`\`\n*Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            const fs = require('fs');
+            const raw = fs.readFileSync('/tmp/tfplan.txt', 'utf8');
+            const plan = raw.length > 60000 ? raw.slice(0, 60000) + '\n...(truncated)' : raw;
+            const output = `### Terraform Plan — \`${{ matrix.environment }}\`\n\`\`\`\n${plan}\n\`\`\`\n*Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
