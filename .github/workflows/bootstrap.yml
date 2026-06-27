@@ -36,7 +36,7 @@ permissions:
 
 env:
   AWS_REGION:          us-east-1
-  EKS_CLUSTER:         arogya-prod-cluster
+  EKS_CLUSTER:         arogya-prod-eks
   ARGOCD_NAMESPACE:    argocd
   KEDA_NAMESPACE:      keda
   KGATEWAY_NAMESPACE:  kgateway-system
