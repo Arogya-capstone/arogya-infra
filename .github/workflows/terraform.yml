@@ -169,3 +169,12 @@ jobs:
             terraform apply failed for prod. Review the logs immediately.
 
             View run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  # ── Bootstrap (runs automatically after every successful apply) ───────────
+  bootstrap:
+    name: Bootstrap cluster
+    needs: [apply-prod]
+    uses: ./.github/workflows/bootstrap.yml
+    with:
+      environment: prod
+    secrets: inherit
