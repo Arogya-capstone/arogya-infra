@@ -32,6 +32,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  packages: read
 
 env:
   AWS_REGION:          us-east-1
@@ -105,9 +106,19 @@ jobs:
 
       - name: Install kgateway
         run: |
-          helm repo add kgateway https://kgateway.dev/charts
-          helm repo update
-          helm upgrade --install kgateway kgateway/kgateway \
+          # Authenticate with GHCR using the built-in Actions token
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" --password-stdin
+
+          # Resolve latest stable release version dynamically
+          KGATEWAY_VERSION=$(curl -sSf \
+            https://api.github.com/repos/kgateway-dev/kgateway/releases/latest \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
+          echo "Installing kgateway v${KGATEWAY_VERSION}"
+
+          helm upgrade --install kgateway \
+            oci://ghcr.io/kgateway-dev/kgateway \
+            --version "${KGATEWAY_VERSION}" \
             --namespace ${{ env.KGATEWAY_NAMESPACE }} \
             --create-namespace \
             --wait --timeout 300s
