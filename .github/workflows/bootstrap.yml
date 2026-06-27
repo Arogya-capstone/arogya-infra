@@ -82,21 +82,25 @@ jobs:
 
       - name: Configure ArgoCD repo access (SSH deploy key)
         run: |
-          kubectl apply -f - <<EOF
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: arogya-gitops-repo
-            namespace: ${{ env.ARGOCD_NAMESPACE }}
-            labels:
-              argocd.argoproj.io/secret-type: repository
-          type: Opaque
-          stringData:
-            type: git
-            url: git@github.com:${{ env.GITOPS_REPO }}.git
-            sshPrivateKey: |
-          $(echo "${{ secrets.GITOPS_DEPLOY_KEY }}" | sed 's/^/      /')
-          EOF
+          # Write key to temp file — printf preserves actual newlines from the secret
+          printf '%s' "${{ secrets.GITOPS_DEPLOY_KEY }}" > /tmp/ssh_key
+          chmod 600 /tmp/ssh_key
+
+          kubectl create secret generic arogya-gitops-repo \
+            --namespace ${{ env.ARGOCD_NAMESPACE }} \
+            --from-literal=type=git \
+            --from-literal=url="git@github.com:${{ env.GITOPS_REPO }}.git" \
+            --from-file=sshPrivateKey=/tmp/ssh_key \
+            --dry-run=client -o json | \
+            python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          d.setdefault('metadata', {}).setdefault('labels', {})
+          d['metadata']['labels']['argocd.argoproj.io/secret-type'] = 'repository'
+          print(json.dumps(d))
+          " | kubectl apply -f -
+
+          rm -f /tmp/ssh_key
 
       # ── 5. Envoy Gateway (Gateway API implementation) ────────────────────────
       # Pinned to v1.1.2 — compatible with EKS 1.30.
@@ -190,18 +194,39 @@ jobs:
           done
           kubectl delete pod pgvector-init -n default --ignore-not-found
 
-      # ── 8. Checkout gitops + apply ArgoCD Application ────────────────────────
-      - name: Checkout gitops repo
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.GITOPS_REPO }}
-          ssh-key: ${{ secrets.GITOPS_DEPLOY_KEY }}
-          path: gitops
-
-      - name: Create app namespace + apply ArgoCD Application
+      # ── 8. Apply ArgoCD Application (manifest inlined — no checkout needed) ───
+      - name: Apply ArgoCD Application
         run: |
           kubectl create namespace ${{ env.APP_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
-          kubectl apply -f gitops/argocd/app-prod.yaml -n ${{ env.ARGOCD_NAMESPACE }}
+          kubectl apply -f - <<'MANIFEST'
+          apiVersion: argoproj.io/v1alpha1
+          kind: Application
+          metadata:
+            name: arogya-prod
+            namespace: argocd
+            finalizers:
+              - resources-finalizer.argocd.argoproj.io
+          spec:
+            project: default
+            source:
+              repoURL: https://github.com/Arogya-capstone/arogya-gitops
+              targetRevision: main
+              path: helm/arogya
+              helm:
+                valueFiles:
+                  - ../../environments/prod/values.yaml
+            destination:
+              server: https://kubernetes.default.svc
+              namespace: arogya-prod
+            syncPolicy:
+              automated:
+                prune: true
+                selfHeal: true
+              syncOptions:
+                - CreateNamespace=true
+                - PrunePropagationPolicy=foreground
+                - ServerSideApply=true
+          MANIFEST
           echo "ArgoCD application applied — will sync once images are in ECR"
 
       # ── 9. Summary ───────────────────────────────────────────────────────────
