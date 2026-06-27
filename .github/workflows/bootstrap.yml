@@ -105,8 +105,9 @@ jobs:
 
       - name: Install kgateway
         run: |
-          helm upgrade --install kgateway \
-            oci://ghcr.io/kgateway-dev/kgateway/charts/kgateway \
+          helm repo add kgateway https://kgateway.dev/charts
+          helm repo update
+          helm upgrade --install kgateway kgateway/kgateway \
             --namespace ${{ env.KGATEWAY_NAMESPACE }} \
             --create-namespace \
             --wait --timeout 300s
