@@ -1,0 +1,245 @@
+name: Bootstrap Cluster
+
+# Triggered manually or automatically after terraform apply-prod succeeds.
+# Installs: ArgoCD, Gateway API CRDs, kgateway, KEDA, pgvector.
+# Then applies the ArgoCD app and optionally triggers the app CD pipeline.
+#
+# Required repo secrets:
+#   AWS_ACCOUNT_ID, AWS_REGION    — already used by terraform.yml
+#   MAIL_USERNAME, MAIL_PASSWORD  — already used by terraform.yml
+#   GITOPS_DEPLOY_KEY             — SSH deploy key for arogya-gitops (already exists)
+#
+# Optional secret (enables auto-trigger of app CD pipeline):
+#   GH_PAT                        — GitHub PAT with repo + workflow scopes
+#                                   Without it, trigger the app CD manually once from Actions tab
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to bootstrap"
+        required: true
+        default: "prod"
+        type: choice
+        options: [prod]
+  workflow_call:
+    inputs:
+      environment:
+        description: "Environment to bootstrap"
+        required: false
+        type: string
+        default: "prod"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION:          us-east-1
+  EKS_CLUSTER:         arogya-prod-eks
+  ARGOCD_NAMESPACE:    argocd
+  KEDA_NAMESPACE:      keda
+  KGATEWAY_NAMESPACE:  kgateway-system
+  APP_NAMESPACE:       arogya-prod
+  GITOPS_REPO:         Arogya-capstone/arogya-gitops
+  APP_REPO:            Arogya-capstone/arogya-app
+  KEDA_IRSA_ARN:       arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-prod-sa-keda
+
+jobs:
+  bootstrap:
+    name: Bootstrap prod cluster
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      # ── 1. Credentials ───────────────────────────────────────────────────────
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-prod-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ── 2. Tools ─────────────────────────────────────────────────────────────
+      - name: Install kubectl
+        run: |
+          KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+          curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+
+      - name: Install helm
+        run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      # ── 3. EKS kubeconfig ────────────────────────────────────────────────────
+      - name: Get EKS kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+
+      # ── 4. ArgoCD ────────────────────────────────────────────────────────────
+      - name: Install ArgoCD
+        run: |
+          kubectl create namespace ${{ env.ARGOCD_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -n ${{ env.ARGOCD_NAMESPACE }} \
+            -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+          kubectl rollout status deployment/argocd-server \
+            -n ${{ env.ARGOCD_NAMESPACE }} --timeout=300s
+
+      - name: Configure ArgoCD repo access (SSH deploy key)
+        run: |
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: arogya-gitops-repo
+            namespace: ${{ env.ARGOCD_NAMESPACE }}
+            labels:
+              argocd.argoproj.io/secret-type: repository
+          type: Opaque
+          stringData:
+            type: git
+            url: git@github.com:${{ env.GITOPS_REPO }}.git
+            sshPrivateKey: |
+          $(echo "${{ secrets.GITOPS_DEPLOY_KEY }}" | sed 's/^/      /')
+          EOF
+
+      # ── 5. Gateway API CRDs + kgateway ───────────────────────────────────────
+      - name: Install Gateway API CRDs
+        run: |
+          kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
+
+      - name: Install kgateway
+        run: |
+          helm upgrade --install kgateway \
+            oci://ghcr.io/kgateway-dev/kgateway/charts/kgateway \
+            --namespace ${{ env.KGATEWAY_NAMESPACE }} \
+            --create-namespace \
+            --wait --timeout 300s
+
+      # ── 6. KEDA (with IRSA) ──────────────────────────────────────────────────
+      - name: Install KEDA
+        run: |
+          helm repo add kedacore https://kedacore.github.io/charts
+          helm repo update
+          helm upgrade --install keda kedacore/keda \
+            --namespace ${{ env.KEDA_NAMESPACE }} \
+            --create-namespace \
+            --set "serviceAccount.operator.annotations.eks\\.amazonaws\\.com/role-arn=${{ env.KEDA_IRSA_ARN }}" \
+            --wait --timeout 300s
+
+      # ── 7. pgvector on RDS ───────────────────────────────────────────────────
+      - name: Enable pgvector extension on RDS
+        run: |
+          RDS_ENDPOINT=$(aws ssm get-parameter \
+            --name /arogya/prod/rds-endpoint \
+            --region ${{ env.AWS_REGION }} \
+            --query Parameter.Value --output text)
+
+          DB_SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id arogya/prod/db-credentials \
+            --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text)
+
+          DB_PASS=$(echo "$DB_SECRET" | \
+            python3 -c "import sys,json; print(json.load(sys.stdin)['password'])")
+
+          # RDS endpoint is host:port — strip the port
+          RDS_HOST="${RDS_ENDPOINT%%:*}"
+
+          kubectl run pgvector-init \
+            --image=postgres:16-alpine \
+            --restart=Never \
+            --namespace=default \
+            --env="PGPASSWORD=$DB_PASS" \
+            -- psql "postgresql://dbadmin@${RDS_HOST}:5432/arogya?sslmode=require" \
+               -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+          # Wait up to 120s for the pod to complete
+          for i in $(seq 1 24); do
+            STATUS=$(kubectl get pod pgvector-init -n default \
+              -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
+            echo "pgvector-init status: $STATUS"
+            if [ "$STATUS" = "Succeeded" ]; then
+              echo "pgvector enabled successfully"
+              break
+            elif [ "$STATUS" = "Failed" ]; then
+              kubectl logs pgvector-init -n default || true
+              kubectl delete pod pgvector-init -n default --ignore-not-found
+              exit 1
+            fi
+            sleep 5
+          done
+          kubectl delete pod pgvector-init -n default --ignore-not-found
+
+      # ── 8. Checkout gitops + apply ArgoCD Application ────────────────────────
+      - name: Checkout gitops repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.GITOPS_REPO }}
+          ssh-key: ${{ secrets.GITOPS_DEPLOY_KEY }}
+          path: gitops
+
+      - name: Create app namespace + apply ArgoCD Application
+        run: |
+          kubectl create namespace ${{ env.APP_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -f gitops/argocd/app-prod.yaml -n ${{ env.ARGOCD_NAMESPACE }}
+          echo "ArgoCD application applied — will sync once images are in ECR"
+
+      # ── 9. Trigger app CD pipeline (only if GH_PAT is configured) ────────────
+      - name: Trigger app CD pipeline
+        if: ${{ secrets.GH_PAT != '' }}
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ env.APP_REPO }}/actions/workflows/cd.yml/dispatches" \
+            -d '{"ref":"main"}')
+          if [ "$HTTP_CODE" = "204" ]; then
+            echo "CD pipeline triggered — images will be built and pushed to ECR"
+          else
+            echo "::warning::CD trigger returned HTTP $HTTP_CODE — check GH_PAT has workflow scope"
+          fi
+
+      - name: Manual CD trigger instructions
+        if: ${{ secrets.GH_PAT == '' }}
+        run: |
+          echo "::notice::GH_PAT not set — trigger the app CD pipeline manually:"
+          echo "::notice::Go to github.com/${{ env.APP_REPO }}/actions → cd.yml → Run workflow → main"
+
+      # ── 10. Summary ──────────────────────────────────────────────────────────
+      - name: Bootstrap summary
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          echo "## Bootstrap ${STATUS}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Notes |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ArgoCD | installed in argocd namespace |" >> $GITHUB_STEP_SUMMARY
+          echo "| kgateway | installed in kgateway-system namespace |" >> $GITHUB_STEP_SUMMARY
+          echo "| KEDA | installed with IRSA role |" >> $GITHUB_STEP_SUMMARY
+          echo "| pgvector | CREATE EXTENSION IF NOT EXISTS vector |" >> $GITHUB_STEP_SUMMARY
+          echo "| ArgoCD app | app-prod.yaml applied — syncing from gitops |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next**: trigger the app CD pipeline to build images, then ArgoCD will deploy everything." >> $GITHUB_STEP_SUMMARY
+
+      - name: Send bootstrap failure email
+        if: failure()
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[FAILED] Arogya bootstrap prod — ${{ github.sha }}"
+          to: medilinkhub.team@gmail.com
+          from: Arogya Infra <medilinkhub.team@gmail.com>
+          body: |
+            Arogya Cluster Bootstrap — FAILED
+            ──────────────────────────────────
+            Environment: prod
+            Actor:       ${{ github.actor }}
+
+            One or more bootstrap steps failed. Review the logs immediately.
+
+            View run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
