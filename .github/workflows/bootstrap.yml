@@ -99,9 +99,37 @@ jobs:
           EOF
 
       # ── 5. Envoy Gateway (Gateway API implementation) ────────────────────────
-      # Pinned to v1.1.2 — compatible with EKS 1.30 (v1.2+ requires K8s 1.31 for isIP() CEL)
+      # Pinned to v1.1.2 — compatible with EKS 1.30.
+      # Clean up any partial install from a newer version first (the v1.8.1 run left a
+      # ValidatingAdmissionPolicy that blocks installing older CRD versions).
       - name: Install Envoy Gateway
         run: |
+          # Remove the admission policy that blocks CRD version downgrades
+          kubectl delete validatingadmissionpolicy \
+            safe-upgrades.gateway.networking.k8s.io --ignore-not-found
+          kubectl delete validatingadmissionpolicybinding \
+            safe-upgrades.gateway.networking.k8s.io --ignore-not-found
+
+          # Delete Gateway API CRDs installed at incompatible version (v1.5.x experimental)
+          # Safe to delete — no Gateway resources have been created yet
+          for crd in \
+            backendlbpolicies.gateway.networking.k8s.io \
+            backendtlspolicies.gateway.networking.k8s.io \
+            gatewayclasses.gateway.networking.k8s.io \
+            gateways.gateway.networking.k8s.io \
+            grpcroutes.gateway.networking.k8s.io \
+            httproutes.gateway.networking.k8s.io \
+            referencegrants.gateway.networking.k8s.io \
+            tcproutes.gateway.networking.k8s.io \
+            tlsroutes.gateway.networking.k8s.io \
+            udproutes.gateway.networking.k8s.io \
+            listenersets.gateway.networking.k8s.io \
+            xbackendtrafficpolicies.gateway.networking.x-k8s.io \
+            xmeshes.gateway.networking.x-k8s.io; do
+            kubectl delete crd "$crd" --ignore-not-found
+          done
+
+          # Now install the EKS-1.30-compatible version
           kubectl apply --server-side --force-conflicts \
             -f https://github.com/envoyproxy/gateway/releases/download/v1.1.2/install.yaml
           kubectl rollout status deployment/envoy-gateway \
