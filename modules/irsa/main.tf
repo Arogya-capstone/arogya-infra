@@ -294,7 +294,10 @@ resource "aws_iam_role" "github_actions" {
       Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_repo}:*"
+          "token.actions.githubusercontent.com:sub" = [
+            "repo:${var.github_org}/${var.github_infra_repo}:*",
+            "repo:${var.github_org}/${var.github_repo}:*",
+          ]
         }
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
@@ -304,6 +307,12 @@ resource "aws_iam_role" "github_actions" {
   })
 
   tags = merge(local.common_tags, { Name = "${var.project}-${var.environment}-github-actions" })
+}
+
+# AdministratorAccess lets the Terraform pipeline provision all infra
+resource "aws_iam_role_policy_attachment" "github_actions_admin" {
+  role       = aws_iam_role.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
 
 resource "aws_iam_role_policy" "github_actions" {

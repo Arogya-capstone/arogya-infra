@@ -18,3 +18,7 @@ variable "appointment_events_queue_arn" { type = string }
 variable "groq_api_key_secret_arn" { type = string }
 variable "github_org" { type = string }
 variable "github_repo" { type = string }
+variable "github_infra_repo" {
+  type    = string
+  default = "arogya-infra"
+}
