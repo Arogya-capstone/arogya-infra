@@ -17,7 +17,7 @@ node_max_size      = 6
 node_desired_size  = 3
 
 # RDS
-rds_instance_class = "db.t3.medium"
+rds_instance_class = "db.t3.micro"
 rds_multi_az       = false
 
 # Kubernetes namespace
