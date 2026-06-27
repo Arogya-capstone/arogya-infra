@@ -9,9 +9,8 @@ name: Bootstrap Cluster
 #   MAIL_USERNAME, MAIL_PASSWORD  — already used by terraform.yml
 #   GITOPS_DEPLOY_KEY             — SSH deploy key for arogya-gitops (already exists)
 #
-# Optional secret (enables auto-trigger of app CD pipeline):
-#   GH_PAT                        — GitHub PAT with repo + workflow scopes
-#                                   Without it, trigger the app CD manually once from Actions tab
+# After bootstrap completes, manually trigger the app CD pipeline once:
+#   github.com/Arogya-capstone/arogya-app/actions → cd.yml → Run workflow → main
 
 on:
   workflow_dispatch:
@@ -42,7 +41,6 @@ env:
   KGATEWAY_NAMESPACE:  kgateway-system
   APP_NAMESPACE:       arogya-prod
   GITOPS_REPO:         Arogya-capstone/arogya-gitops
-  APP_REPO:            Arogya-capstone/arogya-app
   KEDA_IRSA_ARN:       arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-prod-sa-keda
 
 jobs:
@@ -182,29 +180,7 @@ jobs:
           kubectl apply -f gitops/argocd/app-prod.yaml -n ${{ env.ARGOCD_NAMESPACE }}
           echo "ArgoCD application applied — will sync once images are in ECR"
 
-      # ── 9. Trigger app CD pipeline (only if GH_PAT is configured) ────────────
-      - name: Trigger app CD pipeline
-        if: ${{ secrets.GH_PAT != '' }}
-        run: |
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST \
-            -H "Authorization: Bearer ${{ secrets.GH_PAT }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ env.APP_REPO }}/actions/workflows/cd.yml/dispatches" \
-            -d '{"ref":"main"}')
-          if [ "$HTTP_CODE" = "204" ]; then
-            echo "CD pipeline triggered — images will be built and pushed to ECR"
-          else
-            echo "::warning::CD trigger returned HTTP $HTTP_CODE — check GH_PAT has workflow scope"
-          fi
-
-      - name: Manual CD trigger instructions
-        if: ${{ secrets.GH_PAT == '' }}
-        run: |
-          echo "::notice::GH_PAT not set — trigger the app CD pipeline manually:"
-          echo "::notice::Go to github.com/${{ env.APP_REPO }}/actions → cd.yml → Run workflow → main"
-
-      # ── 10. Summary ──────────────────────────────────────────────────────────
+      # ── 9. Summary ───────────────────────────────────────────────────────────
       - name: Bootstrap summary
         if: always()
         run: |
@@ -219,7 +195,7 @@ jobs:
           echo "| pgvector | CREATE EXTENSION IF NOT EXISTS vector |" >> $GITHUB_STEP_SUMMARY
           echo "| ArgoCD app | app-prod.yaml applied — syncing from gitops |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Next**: trigger the app CD pipeline to build images, then ArgoCD will deploy everything." >> $GITHUB_STEP_SUMMARY
+          echo "**Next step**: go to github.com/Arogya-capstone/arogya-app/actions → cd.yml → Run workflow → main" >> $GITHUB_STEP_SUMMARY
 
       - name: Send bootstrap failure email
         if: failure()
