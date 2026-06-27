@@ -2,13 +2,16 @@ name: Bootstrap Cluster
 
 # Triggered manually or automatically after terraform apply-prod succeeds.
 # Installs: ArgoCD, Gateway API CRDs, kgateway, KEDA, pgvector.
-# Then applies the ArgoCD app and (optionally) triggers the app CD pipeline.
+# Then applies the ArgoCD app and optionally triggers the app CD pipeline.
 #
 # Required repo secrets:
-#   AWS_ACCOUNT_ID, AWS_REGION          — already used by terraform.yml
-#   MAIL_USERNAME, MAIL_PASSWORD        — already used by terraform.yml
-#   GH_PAT                             — GitHub PAT (repo + actions:write scopes)
-#                                         needed to checkout gitops and trigger app CD
+#   AWS_ACCOUNT_ID, AWS_REGION    — already used by terraform.yml
+#   MAIL_USERNAME, MAIL_PASSWORD  — already used by terraform.yml
+#   GITOPS_DEPLOY_KEY             — SSH deploy key for arogya-gitops (already exists)
+#
+# Optional secret (enables auto-trigger of app CD pipeline):
+#   GH_PAT                        — GitHub PAT with repo + workflow scopes
+#                                   Without it, trigger the app CD manually once from Actions tab
 
 on:
   workflow_dispatch:
@@ -79,7 +82,7 @@ jobs:
           kubectl rollout status deployment/argocd-server \
             -n ${{ env.ARGOCD_NAMESPACE }} --timeout=300s
 
-      - name: Configure ArgoCD repo access (via Secret)
+      - name: Configure ArgoCD repo access (SSH deploy key)
         run: |
           kubectl apply -f - <<EOF
           apiVersion: v1
@@ -92,9 +95,9 @@ jobs:
           type: Opaque
           stringData:
             type: git
-            url: https://github.com/${{ env.GITOPS_REPO }}
-            username: x-access-token
-            password: "${{ secrets.GH_PAT }}"
+            url: git@github.com:${{ env.GITOPS_REPO }}.git
+            sshPrivateKey: |
+          $(echo "${{ secrets.GITOPS_DEPLOY_KEY }}" | sed 's/^/      /')
           EOF
 
       # ── 5. Gateway API CRDs + kgateway ───────────────────────────────────────
@@ -137,7 +140,7 @@ jobs:
           DB_PASS=$(echo "$DB_SECRET" | \
             python3 -c "import sys,json; print(json.load(sys.stdin)['password'])")
 
-          # Strip port from endpoint if present (RDS returns host:port)
+          # RDS endpoint is host:port — strip the port
           RDS_HOST="${RDS_ENDPOINT%%:*}"
 
           kubectl run pgvector-init \
@@ -165,25 +168,23 @@ jobs:
           done
           kubectl delete pod pgvector-init -n default --ignore-not-found
 
-      # ── 8. Create app namespace + apply ArgoCD Application ───────────────────
+      # ── 8. Checkout gitops + apply ArgoCD Application ────────────────────────
       - name: Checkout gitops repo
         uses: actions/checkout@v4
         with:
           repository: ${{ env.GITOPS_REPO }}
-          token: ${{ secrets.GH_PAT }}
+          ssh-key: ${{ secrets.GITOPS_DEPLOY_KEY }}
           path: gitops
 
-      - name: Create app namespace
+      - name: Create app namespace + apply ArgoCD Application
         run: |
           kubectl create namespace ${{ env.APP_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Apply ArgoCD Application
-        run: |
           kubectl apply -f gitops/argocd/app-prod.yaml -n ${{ env.ARGOCD_NAMESPACE }}
-          echo "ArgoCD app applied — it will sync once images are available in ECR"
+          echo "ArgoCD application applied — will sync once images are in ECR"
 
-      # ── 9. Trigger app CD pipeline to build + push images ────────────────────
+      # ── 9. Trigger app CD pipeline (only if GH_PAT is configured) ────────────
       - name: Trigger app CD pipeline
+        if: ${{ secrets.GH_PAT != '' }}
         run: |
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST \
@@ -192,25 +193,33 @@ jobs:
             "https://api.github.com/repos/${{ env.APP_REPO }}/actions/workflows/cd.yml/dispatches" \
             -d '{"ref":"main"}')
           if [ "$HTTP_CODE" = "204" ]; then
-            echo "CD pipeline triggered successfully — images will be built and pushed to ECR"
+            echo "CD pipeline triggered — images will be built and pushed to ECR"
           else
-            echo "Warning: CD pipeline trigger returned HTTP $HTTP_CODE (GH_PAT may need actions:write scope)"
+            echo "::warning::CD trigger returned HTTP $HTTP_CODE — check GH_PAT has workflow scope"
           fi
+
+      - name: Manual CD trigger instructions
+        if: ${{ secrets.GH_PAT == '' }}
+        run: |
+          echo "::notice::GH_PAT not set — trigger the app CD pipeline manually:"
+          echo "::notice::Go to github.com/${{ env.APP_REPO }}/actions → cd.yml → Run workflow → main"
 
       # ── 10. Summary ──────────────────────────────────────────────────────────
       - name: Bootstrap summary
         if: always()
         run: |
-          echo "## Bootstrap ${{ job.status == 'success' && 'complete' || 'FAILED' }}" >> $GITHUB_STEP_SUMMARY
+          STATUS="${{ job.status }}"
+          echo "## Bootstrap ${STATUS}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| ArgoCD | installed |" >> $GITHUB_STEP_SUMMARY
-          echo "| kgateway | installed |" >> $GITHUB_STEP_SUMMARY
-          echo "| KEDA + IRSA | installed |" >> $GITHUB_STEP_SUMMARY
-          echo "| pgvector | enabled on RDS |" >> $GITHUB_STEP_SUMMARY
-          echo "| ArgoCD app | applied |" >> $GITHUB_STEP_SUMMARY
-          echo "| App CD | triggered |" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Notes |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ArgoCD | installed in argocd namespace |" >> $GITHUB_STEP_SUMMARY
+          echo "| kgateway | installed in kgateway-system namespace |" >> $GITHUB_STEP_SUMMARY
+          echo "| KEDA | installed with IRSA role |" >> $GITHUB_STEP_SUMMARY
+          echo "| pgvector | CREATE EXTENSION IF NOT EXISTS vector |" >> $GITHUB_STEP_SUMMARY
+          echo "| ArgoCD app | app-prod.yaml applied — syncing from gitops |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next**: trigger the app CD pipeline to build images, then ArgoCD will deploy everything." >> $GITHUB_STEP_SUMMARY
 
       - name: Send bootstrap failure email
         if: failure()
