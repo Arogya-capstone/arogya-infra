@@ -32,14 +32,13 @@ on:
 permissions:
   id-token: write
   contents: read
-  packages: read
 
 env:
   AWS_REGION:          us-east-1
   EKS_CLUSTER:         arogya-prod-eks
   ARGOCD_NAMESPACE:    argocd
   KEDA_NAMESPACE:      keda
-  KGATEWAY_NAMESPACE:  kgateway-system
+  GATEWAY_NAMESPACE:   envoy-gateway-system
   APP_NAMESPACE:       arogya-prod
   GITOPS_REPO:         Arogya-capstone/arogya-gitops
   KEDA_IRSA_ARN:       arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-prod-sa-keda
@@ -99,29 +98,17 @@ jobs:
           $(echo "${{ secrets.GITOPS_DEPLOY_KEY }}" | sed 's/^/      /')
           EOF
 
-      # ── 5. Gateway API CRDs + kgateway ───────────────────────────────────────
-      - name: Install Gateway API CRDs
+      # ── 5. Envoy Gateway (Gateway API implementation) ────────────────────────
+      - name: Install Envoy Gateway
         run: |
-          kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.0/standard-install.yaml
-
-      - name: Install kgateway
-        run: |
-          # Authenticate with GHCR using the built-in Actions token
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
-            --username "${{ github.actor }}" --password-stdin
-
-          # Resolve latest stable release version dynamically
-          KGATEWAY_VERSION=$(curl -sSf \
-            https://api.github.com/repos/kgateway-dev/kgateway/releases/latest \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
-          echo "Installing kgateway v${KGATEWAY_VERSION}"
-
-          helm upgrade --install kgateway \
-            oci://ghcr.io/kgateway-dev/kgateway \
-            --version "${KGATEWAY_VERSION}" \
-            --namespace ${{ env.KGATEWAY_NAMESPACE }} \
-            --create-namespace \
-            --wait --timeout 300s
+          # Resolve latest stable release
+          EG_VERSION=$(curl -sSf \
+            https://api.github.com/repos/envoyproxy/gateway/releases/latest \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
+          echo "Installing Envoy Gateway ${EG_VERSION}"
+          kubectl apply -f "https://github.com/envoyproxy/gateway/releases/download/${EG_VERSION}/install.yaml"
+          kubectl rollout status deployment/envoy-gateway \
+            -n ${{ env.GATEWAY_NAMESPACE }} --timeout=300s
 
       # ── 6. KEDA (with IRSA) ──────────────────────────────────────────────────
       - name: Install KEDA
