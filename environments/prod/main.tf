@@ -203,21 +203,24 @@ module "irsa" {
 
 # ── Cross-module SSM Parameters (root-level to break security↔sqs/rds cycles) ─
 resource "aws_ssm_parameter" "sqs_rag_queue_url" {
-  name  = "${local.ssm_prefix}/sqs-rag-queue-url"
-  type  = "String"
-  value = module.sqs.rag_processing_queue_url
+  name      = "${local.ssm_prefix}/sqs-rag-queue-url"
+  type      = "String"
+  value     = module.sqs.rag_processing_queue_url
+  overwrite = true
 }
 
 resource "aws_ssm_parameter" "sqs_appointment_queue_url" {
-  name  = "${local.ssm_prefix}/sqs-appointment-queue-url"
-  type  = "String"
-  value = module.sqs.appointment_events_queue_url
+  name      = "${local.ssm_prefix}/sqs-appointment-queue-url"
+  type      = "String"
+  value     = module.sqs.appointment_events_queue_url
+  overwrite = true
 }
 
 resource "aws_ssm_parameter" "rds_endpoint" {
-  name  = "${local.ssm_prefix}/rds-endpoint"
-  type  = "String"
-  value = module.rds.db_endpoint
+  name      = "${local.ssm_prefix}/rds-endpoint"
+  type      = "String"
+  value     = module.rds.db_endpoint
+  overwrite = true
 }
 
 # ── DB credentials secret version (root-level to break security↔rds cycle) ───

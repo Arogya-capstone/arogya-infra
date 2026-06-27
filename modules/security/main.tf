@@ -169,50 +169,57 @@ resource "aws_bedrock_guardrail_version" "medical" {
 
 # ── SSM Parameters (non-cross-module values only) ─────────────────────────────
 resource "aws_ssm_parameter" "s3_bucket_name" {
-  name  = "${local.ssm_prefix}/s3-bucket-name"
-  type  = "String"
-  value = aws_s3_bucket.documents.id
-  tags  = merge(local.common_tags, { Name = "s3-bucket-name" })
+  name      = "${local.ssm_prefix}/s3-bucket-name"
+  type      = "String"
+  value     = aws_s3_bucket.documents.id
+  overwrite = true
+  tags      = merge(local.common_tags, { Name = "s3-bucket-name" })
 }
 
 resource "aws_ssm_parameter" "bedrock_guardrail_id" {
-  name  = "${local.ssm_prefix}/bedrock-guardrail-id"
-  type  = "String"
-  value = aws_bedrock_guardrail.medical.guardrail_id
-  tags  = merge(local.common_tags, { Name = "bedrock-guardrail-id" })
+  name      = "${local.ssm_prefix}/bedrock-guardrail-id"
+  type      = "String"
+  value     = aws_bedrock_guardrail.medical.guardrail_id
+  overwrite = true
+  tags      = merge(local.common_tags, { Name = "bedrock-guardrail-id" })
 }
 
 resource "aws_ssm_parameter" "bedrock_guardrail_version" {
-  name  = "${local.ssm_prefix}/bedrock-guardrail-version"
-  type  = "String"
-  value = aws_bedrock_guardrail_version.medical.version
-  tags  = merge(local.common_tags, { Name = "bedrock-guardrail-version" })
+  name      = "${local.ssm_prefix}/bedrock-guardrail-version"
+  type      = "String"
+  value     = aws_bedrock_guardrail_version.medical.version
+  overwrite = true
+  tags      = merge(local.common_tags, { Name = "bedrock-guardrail-version" })
 }
 
 resource "aws_ssm_parameter" "bedrock_llm_model_id" {
-  name  = "${local.ssm_prefix}/bedrock-llm-model-id"
-  type  = "String"
-  value = "amazon.nova-lite-v1:0"
-  tags  = merge(local.common_tags, { Name = "bedrock-llm-model-id" })
+  name      = "${local.ssm_prefix}/bedrock-llm-model-id"
+  type      = "String"
+  value     = "amazon.nova-lite-v1:0"
+  overwrite = true
+  tags      = merge(local.common_tags, { Name = "bedrock-llm-model-id" })
 }
 
 resource "aws_ssm_parameter" "bedrock_embed_model_id" {
-  name  = "${local.ssm_prefix}/bedrock-embed-model-id"
-  type  = "String"
-  value = "amazon.titan-embed-text-v2:0"
-  tags  = merge(local.common_tags, { Name = "bedrock-embed-model-id" })
+  name      = "${local.ssm_prefix}/bedrock-embed-model-id"
+  type      = "String"
+  value     = "amazon.titan-embed-text-v2:0"
+  overwrite = true
+  tags      = merge(local.common_tags, { Name = "bedrock-embed-model-id" })
 }
 
 resource "aws_ssm_parameter" "namespace" {
-  name  = "${local.ssm_prefix}/k8s-namespace"
-  type  = "String"
-  value = var.namespace
-  tags  = merge(local.common_tags, { Name = "k8s-namespace" })
+  name      = "${local.ssm_prefix}/k8s-namespace"
+  type      = "String"
+  value     = var.namespace
+  overwrite = true
+  tags      = merge(local.common_tags, { Name = "k8s-namespace" })
 }
 
 resource "aws_ssm_parameter" "environment" {
-  name  = "${local.ssm_prefix}/environment"
-  type  = "String"
-  value = var.environment
-  tags  = merge(local.common_tags, { Name = "environment" })
+  name      = "${local.ssm_prefix}/environment"
+  type      = "String"
+  value     = var.environment
+  overwrite = true
+  tags      = merge(local.common_tags, { Name = "environment" })
 }
