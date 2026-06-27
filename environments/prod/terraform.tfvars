@@ -18,7 +18,7 @@ node_desired_size  = 3
 
 # RDS
 rds_instance_class = "db.t3.medium"
-rds_multi_az       = true
+rds_multi_az       = false
 
 # Kubernetes namespace
 namespace = "arogya-prod"
