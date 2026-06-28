@@ -150,7 +150,19 @@ jobs:
             --set "serviceAccount.operator.annotations.eks\\.amazonaws\\.com/role-arn=${{ env.KEDA_IRSA_ARN }}" \
             --wait --timeout 300s
 
-      # ── 7. pgvector on RDS ───────────────────────────────────────────────────
+      # ── 7. GatewayClass (Envoy Gateway install.yaml doesn't create it) ──────
+      - name: Apply GatewayClass
+        run: |
+          kubectl apply -f - <<'EOF'
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: GatewayClass
+          metadata:
+            name: eg
+          spec:
+            controllerName: gateway.envoyproxy.io/gatewayclass-controller
+          EOF
+
+      # ── 8. pgvector on RDS ───────────────────────────────────────────────────
       - name: Enable pgvector extension on RDS
         run: |
           RDS_ENDPOINT=$(aws ssm get-parameter \
@@ -194,7 +206,7 @@ jobs:
           done
           kubectl delete pod pgvector-init -n default --ignore-not-found
 
-      # ── 8. Create service databases on RDS ───────────────────────────────────
+      # ── 9. Create service databases on RDS ───────────────────────────────────
       - name: Create service databases on RDS
         run: |
           RDS_ENDPOINT=$(aws ssm get-parameter \
@@ -292,7 +304,7 @@ jobs:
           kubectl delete configmap db-init-script -n default --ignore-not-found
           kubectl delete secret db-init-pass -n default --ignore-not-found
 
-      # ── 9. Apply ArgoCD Application (manifest inlined — no checkout needed) ───
+      # ── 10. Apply ArgoCD Application (manifest inlined — no checkout needed) ──
       - name: Apply ArgoCD Application
         run: |
           kubectl create namespace ${{ env.APP_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
