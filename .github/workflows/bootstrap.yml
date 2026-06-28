@@ -212,34 +212,85 @@ jobs:
 
           RDS_HOST="${RDS_ENDPOINT%%:*}"
 
-          kubectl run db-init \
-            --image=postgres:16-alpine \
-            --restart=Never \
-            --namespace=default \
-            --env="PGPASSWORD=$DB_PASS" \
-            -- psql "postgresql://dbadmin@${RDS_HOST}:5432/arogya?sslmode=require" -c "
-              SELECT 'CREATE DATABASE user_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'user_db')\gexec
-              SELECT 'CREATE DATABASE appointment_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'appointment_db')\gexec
-              SELECT 'CREATE DATABASE health_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'health_db')\gexec
-              SELECT 'CREATE DATABASE document_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'document_db')\gexec
-              SELECT 'CREATE DATABASE rag_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'rag_db')\gexec
-            "
+          # Write the init script — outer shell expands RDS_HOST now;
+          # \$ escapes keep $db and $exists as literals for the container shell.
+          cat > /tmp/create_dbs.sh << 'SCRIPT_EOF'
+          #!/bin/sh
+          set -e
+          CONN="postgresql://dbadmin@__RDS_HOST__:5432/arogya?sslmode=require"
+          for db in user_db appointment_db health_db document_db rag_db; do
+            exists=$(psql "$CONN" -tAc "SELECT 1 FROM pg_database WHERE datname = '$db'" | tr -d '[:space:]')
+            if [ "$exists" = "1" ]; then
+              echo "$db already exists — skipping"
+            else
+              psql "$CONN" -c "CREATE DATABASE $db"
+              echo "Created $db"
+            fi
+          done
+          SCRIPT_EOF
 
-          for i in $(seq 1 24); do
+          # Substitute the actual host into the script
+          sed -i "s/__RDS_HOST__/${RDS_HOST}/g" /tmp/create_dbs.sh
+          chmod +x /tmp/create_dbs.sh
+
+          # Clean up any previous run
+          kubectl delete pod db-init -n default --ignore-not-found
+          kubectl delete configmap db-init-script -n default --ignore-not-found
+
+          kubectl create configmap db-init-script \
+            --from-file=create_dbs.sh=/tmp/create_dbs.sh \
+            --namespace=default
+
+          # DB_PASS may contain special chars — write to a temp secret
+          kubectl delete secret db-init-pass -n default --ignore-not-found
+          kubectl create secret generic db-init-pass \
+            --from-literal=PGPASSWORD="${DB_PASS}" \
+            --namespace=default
+
+          kubectl apply -n default -f - << 'EOF'
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: db-init
+            namespace: default
+          spec:
+            restartPolicy: Never
+            containers:
+            - name: db-init
+              image: postgres:16-alpine
+              command: ["/bin/sh", "/scripts/create_dbs.sh"]
+              envFrom:
+              - secretRef:
+                  name: db-init-pass
+              volumeMounts:
+              - name: script
+                mountPath: /scripts
+            volumes:
+            - name: script
+              configMap:
+                name: db-init-script
+          EOF
+
+          for i in $(seq 1 36); do
             STATUS=$(kubectl get pod db-init -n default \
               -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
             echo "db-init status: $STATUS"
             if [ "$STATUS" = "Succeeded" ]; then
               echo "Databases created successfully"
+              kubectl logs db-init -n default
               break
             elif [ "$STATUS" = "Failed" ]; then
               kubectl logs db-init -n default || true
               kubectl delete pod db-init -n default --ignore-not-found
+              kubectl delete configmap db-init-script -n default --ignore-not-found
+              kubectl delete secret db-init-pass -n default --ignore-not-found
               exit 1
             fi
             sleep 5
           done
           kubectl delete pod db-init -n default --ignore-not-found
+          kubectl delete configmap db-init-script -n default --ignore-not-found
+          kubectl delete secret db-init-pass -n default --ignore-not-found
 
       # ── 9. Apply ArgoCD Application (manifest inlined — no checkout needed) ───
       - name: Apply ArgoCD Application
