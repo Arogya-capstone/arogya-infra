@@ -88,6 +88,88 @@ resource "aws_dynamodb_table" "tf_locks" {
 
 output "state_bucket" { value = aws_s3_bucket.tf_state.id }
 output "lock_table" { value = aws_dynamodb_table.tf_locks.name }
+output "github_actions_role_arn" { value = aws_iam_role.github_actions.arn }
 output "next_step" {
   value = "Bootstrap complete. Now run terraform init + apply in environments/dev and environments/prod."
+}
+
+# ── GitHub Actions OIDC Role ──────────────────────────────────────────────────
+# Kept here (not in prod Terraform) so that `terraform destroy` on prod
+# never deletes the role that GitHub Actions needs to run the next apply.
+variable "github_org" {
+  type    = string
+  default = "Arogya-capstone"
+}
+
+variable "github_infra_repo" {
+  type    = string
+  default = "arogya-infra"
+}
+
+variable "github_app_repo" {
+  type    = string
+  default = "arogya-app"
+}
+
+resource "aws_iam_role" "github_actions" {
+  name = "${var.project}-prod-github-actions"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = "arn:aws:iam::${var.account_id}:oidc-provider/token.actions.githubusercontent.com" }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringLike = {
+          "token.actions.githubusercontent.com:sub" = [
+            "repo:${var.github_org}/${var.github_infra_repo}:*",
+            "repo:${var.github_org}/${var.github_app_repo}:*",
+          ]
+        }
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+        }
+      }
+    }]
+  })
+
+  tags = merge(local.tags, { Name = "${var.project}-prod-github-actions" })
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_admin" {
+  role       = aws_iam_role.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
+resource "aws_iam_role_policy" "github_actions_ecr" {
+  name = "ecr-push"
+  role = aws_iam_role.github_actions.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ECRAuth"
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        Sid    = "ECRPush"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage", "ecr:PutImage", "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart", "ecr:CompleteLayerUpload"
+        ]
+        Resource = "arn:aws:ecr:${var.region}:${var.account_id}:repository/${var.project}/*"
+      },
+      {
+        Sid      = "EKSDescribe"
+        Effect   = "Allow"
+        Action   = ["eks:DescribeCluster"]
+        Resource = "arn:aws:eks:${var.region}:${var.account_id}:cluster/*"
+      }
+    ]
+  })
 }

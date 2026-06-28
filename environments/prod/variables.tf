@@ -14,8 +14,6 @@ variable "node_desired_size" { type = number }
 variable "rds_instance_class" { type = string }
 variable "rds_multi_az" { type = bool }
 variable "namespace" { type = string }
-variable "github_org" { type = string }
-variable "github_repo" { type = string }
 variable "ops_email" { type = string }
 variable "ses_sender_email" { type = string }
 variable "groq_api_key" {
