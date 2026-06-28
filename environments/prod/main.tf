@@ -238,7 +238,9 @@ resource "aws_security_group_rule" "node_nodeport_ingress" {
 resource "aws_secretsmanager_secret_version" "db_credentials" {
   secret_id = module.security.db_credentials_secret_arn
   secret_string = jsonencode({
-    password = module.rds.db_password
     username = "dbadmin"
+    password = module.rds.db_password
+    host     = split(":", module.rds.db_endpoint)[0]
+    port     = 5432
   })
 }
