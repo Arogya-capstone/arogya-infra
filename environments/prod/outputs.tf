@@ -1,6 +1,6 @@
 output "route53_nameservers" { value = aws_route53_zone.main.name_servers }
 output "cloudfront_domain" { value = local.cdn_ready ? aws_cloudfront_distribution.frontend[0].domain_name : "not yet created — re-run after bootstrap" }
-output "app_url" { value = local.cdn_ready ? "https://${var.app_subdomain}.${var.domain_name}" : "not yet created — re-run after bootstrap" }
+output "app_url" { value = local.cdn_ready ? "https://${var.app_subdomain}.${var.domain_name}" : "pending — trigger workflow again after bootstrap stores ELB hostname" }
 output "cluster_name" { value = module.eks.cluster_name }
 output "cluster_endpoint" { value = module.eks.cluster_endpoint }
 output "ecr_registry" { value = module.ecr.registry_url }

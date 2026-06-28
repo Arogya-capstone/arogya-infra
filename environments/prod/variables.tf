@@ -18,6 +18,10 @@ variable "ops_email" { type = string }
 variable "ses_sender_email" { type = string }
 variable "domain_name" { type = string }
 variable "app_subdomain" { type = string }
+variable "elb_hostname" {
+  type    = string
+  default = "pending"
+}
 variable "groq_api_key" {
   type      = string
   sensitive = true

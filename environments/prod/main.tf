@@ -281,24 +281,10 @@ resource "aws_acm_certificate_validation" "frontend" {
   timeouts { create = "10m" }
 }
 
-# ELB hostname is written here by Terraform (initial: "pending"),
-# then overwritten by the bootstrap workflow once the ELB is provisioned.
-resource "aws_ssm_parameter" "elb_hostname" {
-  name  = "${local.ssm_prefix}/elb-hostname"
-  type  = "String"
-  value = "pending"
-  lifecycle { ignore_changes = [value] }
-}
-
-# Read live value so CloudFront picks up the real ELB on subsequent applies.
-data "aws_ssm_parameter" "elb_hostname_live" {
-  depends_on = [aws_ssm_parameter.elb_hostname]
-  name       = aws_ssm_parameter.elb_hostname.name
-}
-
+# elb_hostname is passed by the workflow, which reads it from SSM.
+# Bootstrap stores it after provisioning the ELB. Default "pending" skips CloudFront.
 locals {
-  elb_hostname = data.aws_ssm_parameter.elb_hostname_live.value
-  cdn_ready    = local.elb_hostname != "pending"
+  cdn_ready = var.elb_hostname != "pending"
 }
 
 resource "aws_cloudfront_distribution" "frontend" {
@@ -310,7 +296,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   aliases         = ["${var.app_subdomain}.${var.domain_name}"]
 
   origin {
-    domain_name = local.elb_hostname
+    domain_name = var.elb_hostname
     origin_id   = "elb"
     custom_origin_config {
       http_port              = 80
