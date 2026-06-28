@@ -12,14 +12,14 @@ locals {
 resource "aws_secretsmanager_secret" "db_credentials" {
   name                    = "${var.project}/${var.environment}/db-credentials"
   kms_key_id              = var.kms_key_arn
-  recovery_window_in_days = 7
+  recovery_window_in_days = 0
   tags                    = merge(local.common_tags, { Name = "${var.project}-${var.environment}-db-credentials" })
 }
 
 resource "aws_secretsmanager_secret" "jwt_private_key" {
   name                    = "${var.project}/${var.environment}/jwt-private-key"
   kms_key_id              = var.kms_key_arn
-  recovery_window_in_days = 7
+  recovery_window_in_days = 0
   tags                    = merge(local.common_tags, { Name = "${var.project}-${var.environment}-jwt-private-key" })
 }
 
@@ -31,7 +31,7 @@ resource "aws_secretsmanager_secret_version" "jwt_private_key" {
 resource "aws_secretsmanager_secret" "jwt_public_key" {
   name                    = "${var.project}/${var.environment}/jwt-public-key"
   kms_key_id              = var.kms_key_arn
-  recovery_window_in_days = 7
+  recovery_window_in_days = 0
   tags                    = merge(local.common_tags, { Name = "${var.project}-${var.environment}-jwt-public-key" })
 }
 
@@ -43,7 +43,7 @@ resource "aws_secretsmanager_secret_version" "jwt_public_key" {
 resource "aws_secretsmanager_secret" "groq_api_key" {
   name                    = "${var.project}/${var.environment}/groq-api-key"
   kms_key_id              = var.kms_key_arn
-  recovery_window_in_days = 7
+  recovery_window_in_days = 0
   tags                    = merge(local.common_tags, { Name = "${var.project}-${var.environment}-groq-api-key" })
 }
 
