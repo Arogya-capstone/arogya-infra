@@ -67,6 +67,13 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      - name: Read ELB hostname from SSM
+        run: |
+          ELB=$(aws ssm get-parameter --name /arogya/prod/elb-hostname \
+            --region ${{ secrets.AWS_REGION }} \
+            --query Parameter.Value --output text 2>/dev/null || echo "pending")
+          echo "TF_VAR_elb_hostname=$ELB" >> $GITHUB_ENV
+
       - name: Terraform Plan
         id: plan
         run: terraform plan -var-file=terraform.tfvars -out=tfplan -no-color
@@ -113,6 +120,14 @@ jobs:
 
       - run: terraform init
       - run: terraform validate
+
+      - name: Read ELB hostname from SSM
+        run: |
+          ELB=$(aws ssm get-parameter --name /arogya/prod/elb-hostname \
+            --region ${{ secrets.AWS_REGION }} \
+            --query Parameter.Value --output text 2>/dev/null || echo "pending")
+          echo "TF_VAR_elb_hostname=$ELB" >> $GITHUB_ENV
+
       - run: terraform plan -var-file=terraform.tfvars -out=tfplan
       - run: terraform apply -auto-approve tfplan
 

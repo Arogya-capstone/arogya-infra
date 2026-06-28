@@ -43,24 +43,24 @@ resource "aws_security_group" "rds" {
 }
 
 resource "aws_db_instance" "postgres" {
-  identifier                = "${var.project}-${var.environment}-db"
-  engine                    = "postgres"
-  engine_version            = var.engine_version
-  instance_class            = var.instance_class
-  allocated_storage         = var.allocated_storage
-  max_allocated_storage     = 100
-  db_name                   = "arogya"
-  username                  = "dbadmin"
-  password                  = random_password.db_password.result
-  db_subnet_group_name      = aws_db_subnet_group.rds.name
-  vpc_security_group_ids    = [aws_security_group.rds.id]
-  multi_az                  = var.multi_az
-  storage_encrypted         = true
-  kms_key_id                = var.kms_key_arn
-  backup_retention_period   = 7
-  backup_window             = "03:00-04:00"
-  maintenance_window        = "Mon:04:00-Mon:05:00"
-  skip_final_snapshot = true
+  identifier              = "${var.project}-${var.environment}-db"
+  engine                  = "postgres"
+  engine_version          = var.engine_version
+  instance_class          = var.instance_class
+  allocated_storage       = var.allocated_storage
+  max_allocated_storage   = 100
+  db_name                 = "arogya"
+  username                = "dbadmin"
+  password                = random_password.db_password.result
+  db_subnet_group_name    = aws_db_subnet_group.rds.name
+  vpc_security_group_ids  = [aws_security_group.rds.id]
+  multi_az                = var.multi_az
+  storage_encrypted       = true
+  kms_key_id              = var.kms_key_arn
+  backup_retention_period = 7
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "Mon:04:00-Mon:05:00"
+  skip_final_snapshot     = true
 
   tags = merge(local.common_tags, { Name = "${var.project}-${var.environment}-postgres" })
 }
