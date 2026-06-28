@@ -16,6 +16,13 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   tags                    = merge(local.common_tags, { Name = "${var.project}-${var.environment}-db-credentials" })
 }
 
+# Auto-generate RSA key pair for JWT signing — persisted in Terraform state.
+# Survives terraform apply re-runs; only rotated if the resource is tainted.
+resource "tls_private_key" "jwt" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
 resource "aws_secretsmanager_secret" "jwt_private_key" {
   name                    = "${var.project}/${var.environment}/jwt-private-key"
   kms_key_id              = var.kms_key_arn
@@ -25,7 +32,7 @@ resource "aws_secretsmanager_secret" "jwt_private_key" {
 
 resource "aws_secretsmanager_secret_version" "jwt_private_key" {
   secret_id     = aws_secretsmanager_secret.jwt_private_key.id
-  secret_string = var.jwt_private_key
+  secret_string = tls_private_key.jwt.private_key_pem
 }
 
 resource "aws_secretsmanager_secret" "jwt_public_key" {
@@ -37,7 +44,7 @@ resource "aws_secretsmanager_secret" "jwt_public_key" {
 
 resource "aws_secretsmanager_secret_version" "jwt_public_key" {
   secret_id     = aws_secretsmanager_secret.jwt_public_key.id
-  secret_string = var.jwt_public_key
+  secret_string = tls_private_key.jwt.public_key_pem
 }
 
 resource "aws_secretsmanager_secret" "groq_api_key" {
@@ -126,6 +133,17 @@ resource "aws_s3_bucket_public_access_block" "documents" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_cors_configuration" "documents" {
+  bucket = aws_s3_bucket.documents.id
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["PUT", "GET", "HEAD"]
+    allowed_origins = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3600
+  }
 }
 
 # ── Bedrock Guardrail — content safety for medical chatbot ────────────────────
