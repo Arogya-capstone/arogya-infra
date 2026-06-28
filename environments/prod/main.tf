@@ -3,6 +3,7 @@ terraform {
   required_providers {
     aws    = { source = "hashicorp/aws", version = "~> 5.0" }
     random = { source = "hashicorp/random", version = "~> 3.0" }
+    tls    = { source = "hashicorp/tls", version = "~> 4.0" }
   }
 }
 
@@ -219,6 +220,18 @@ resource "aws_ssm_parameter" "rds_endpoint" {
   type      = "String"
   value     = module.rds.db_endpoint
   overwrite = true
+}
+
+# ── NodePort access for load balancer → EKS nodes ────────────────────────────
+# Envoy Gateway provisions an NLB; nodes must accept traffic on NodePort range.
+resource "aws_security_group_rule" "node_nodeport_ingress" {
+  type              = "ingress"
+  from_port         = 30000
+  to_port           = 32767
+  protocol          = "tcp"
+  cidr_blocks       = [var.vpc_cidr]
+  security_group_id = module.eks.node_security_group_id
+  description       = "NLB to NodePort range"
 }
 
 # ── DB credentials secret version (root-level to break security↔rds cycle) ───

@@ -194,7 +194,54 @@ jobs:
           done
           kubectl delete pod pgvector-init -n default --ignore-not-found
 
-      # ── 8. Apply ArgoCD Application (manifest inlined — no checkout needed) ───
+      # ── 8. Create service databases on RDS ───────────────────────────────────
+      - name: Create service databases on RDS
+        run: |
+          RDS_ENDPOINT=$(aws ssm get-parameter \
+            --name /arogya/prod/rds-endpoint \
+            --region ${{ env.AWS_REGION }} \
+            --query Parameter.Value --output text)
+
+          DB_SECRET=$(aws secretsmanager get-secret-value \
+            --secret-id arogya/prod/db-credentials \
+            --region ${{ env.AWS_REGION }} \
+            --query SecretString --output text)
+
+          DB_PASS=$(echo "$DB_SECRET" | \
+            python3 -c "import sys,json; print(json.load(sys.stdin)['password'])")
+
+          RDS_HOST="${RDS_ENDPOINT%%:*}"
+
+          kubectl run db-init \
+            --image=postgres:16-alpine \
+            --restart=Never \
+            --namespace=default \
+            --env="PGPASSWORD=$DB_PASS" \
+            -- psql "postgresql://dbadmin@${RDS_HOST}:5432/arogya?sslmode=require" -c "
+              SELECT 'CREATE DATABASE user_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'user_db')\gexec
+              SELECT 'CREATE DATABASE appointment_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'appointment_db')\gexec
+              SELECT 'CREATE DATABASE health_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'health_db')\gexec
+              SELECT 'CREATE DATABASE document_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'document_db')\gexec
+              SELECT 'CREATE DATABASE rag_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'rag_db')\gexec
+            "
+
+          for i in $(seq 1 24); do
+            STATUS=$(kubectl get pod db-init -n default \
+              -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
+            echo "db-init status: $STATUS"
+            if [ "$STATUS" = "Succeeded" ]; then
+              echo "Databases created successfully"
+              break
+            elif [ "$STATUS" = "Failed" ]; then
+              kubectl logs db-init -n default || true
+              kubectl delete pod db-init -n default --ignore-not-found
+              exit 1
+            fi
+            sleep 5
+          done
+          kubectl delete pod db-init -n default --ignore-not-found
+
+      # ── 9. Apply ArgoCD Application (manifest inlined — no checkout needed) ───
       - name: Apply ArgoCD Application
         run: |
           kubectl create namespace ${{ env.APP_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
@@ -229,7 +276,7 @@ jobs:
           MANIFEST
           echo "ArgoCD application applied — will sync once images are in ECR"
 
-      # ── 9. Summary ───────────────────────────────────────────────────────────
+      # ── 10. Summary ──────────────────────────────────────────────────────────
       - name: Bootstrap summary
         if: always()
         run: |
