@@ -304,7 +304,30 @@ jobs:
           kubectl delete configmap db-init-script -n default --ignore-not-found
           kubectl delete secret db-init-pass -n default --ignore-not-found
 
-      # ── 10. Apply ArgoCD Application (manifest inlined — no checkout needed) ──
+      # ── 10. Store ELB hostname in SSM (used by Terraform for CloudFront) ───────
+      - name: Store ELB hostname in SSM
+        run: |
+          echo "Waiting for LoadBalancer hostname..."
+          for i in $(seq 1 30); do
+            ELB=$(kubectl get svc -n envoy-gateway-system \
+              -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].status.loadBalancer.ingress[0].hostname}' \
+              2>/dev/null || true)
+            if [ -n "$ELB" ]; then
+              echo "ELB hostname: $ELB"
+              aws ssm put-parameter \
+                --name /arogya/prod/elb-hostname \
+                --value "$ELB" \
+                --type String \
+                --overwrite \
+                --region ${{ env.AWS_REGION }}
+              echo "Stored ELB hostname in SSM"
+              break
+            fi
+            echo "Attempt $i: ELB not ready yet, waiting 10s..."
+            sleep 10
+          done
+
+      # ── 11. Apply ArgoCD Application (manifest inlined — no checkout needed) ──
       - name: Apply ArgoCD Application
         run: |
           kubectl create namespace ${{ env.APP_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
@@ -339,7 +362,7 @@ jobs:
           MANIFEST
           echo "ArgoCD application applied — will sync once images are in ECR"
 
-      # ── 10. Summary ──────────────────────────────────────────────────────────
+      # ── 12. Summary ──────────────────────────────────────────────────────────
       - name: Bootstrap summary
         if: always()
         run: |

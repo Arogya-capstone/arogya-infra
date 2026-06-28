@@ -244,3 +244,117 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
     port     = 5432
   })
 }
+
+# ── Route53 + ACM + CloudFront ────────────────────────────────────────────────
+
+resource "aws_route53_zone" "main" {
+  name = var.domain_name
+  tags = { Project = var.project, Environment = var.environment, ManagedBy = "terraform" }
+}
+
+resource "aws_acm_certificate" "frontend" {
+  domain_name       = "${var.app_subdomain}.${var.domain_name}"
+  validation_method = "DNS"
+  lifecycle { create_before_destroy = true }
+  tags = { Name = "${var.app_subdomain}.${var.domain_name}" }
+}
+
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.frontend.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = aws_route53_zone.main.zone_id
+}
+
+resource "aws_acm_certificate_validation" "frontend" {
+  certificate_arn         = aws_acm_certificate.frontend.arn
+  validation_record_fqdns = [for r in aws_route53_record.cert_validation : r.fqdn]
+  timeouts { create = "10m" }
+}
+
+# ELB hostname is written here by Terraform (initial: "pending"),
+# then overwritten by the bootstrap workflow once the ELB is provisioned.
+resource "aws_ssm_parameter" "elb_hostname" {
+  name  = "${local.ssm_prefix}/elb-hostname"
+  type  = "String"
+  value = "pending"
+  lifecycle { ignore_changes = [value] }
+}
+
+# Read live value so CloudFront picks up the real ELB on subsequent applies.
+data "aws_ssm_parameter" "elb_hostname_live" {
+  depends_on = [aws_ssm_parameter.elb_hostname]
+  name       = aws_ssm_parameter.elb_hostname.name
+}
+
+locals {
+  elb_hostname = data.aws_ssm_parameter.elb_hostname_live.value
+  cdn_ready    = local.elb_hostname != "pending"
+}
+
+resource "aws_cloudfront_distribution" "frontend" {
+  count      = local.cdn_ready ? 1 : 0
+  depends_on = [aws_acm_certificate_validation.frontend]
+
+  enabled         = true
+  is_ipv6_enabled = true
+  aliases         = ["${var.app_subdomain}.${var.domain_name}"]
+
+  origin {
+    domain_name = local.elb_hostname
+    origin_id   = "elb"
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  default_cache_behavior {
+    target_origin_id       = "elb"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+    # CachingDisabled — dynamic app + API, never cache
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    # AllViewerExceptHostHeader — forward all headers/cookies/query strings to origin
+    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+    min_ttl                  = 0
+    default_ttl              = 0
+    max_ttl                  = 0
+  }
+
+  restrictions {
+    geo_restriction { restriction_type = "none" }
+  }
+
+  viewer_certificate {
+    acm_certificate_arn      = aws_acm_certificate_validation.frontend.certificate_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
+  }
+
+  tags = { Name = "${var.project}-${var.environment}-cdn", Project = var.project }
+}
+
+resource "aws_route53_record" "frontend" {
+  count   = local.cdn_ready ? 1 : 0
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "${var.app_subdomain}.${var.domain_name}"
+  type    = "A"
+  alias {
+    name                   = aws_cloudfront_distribution.frontend[0].domain_name
+    zone_id                = aws_cloudfront_distribution.frontend[0].hosted_zone_id
+    evaluate_target_health = false
+  }
+}

@@ -23,6 +23,10 @@ rds_multi_az       = false
 # Kubernetes namespace
 namespace = "arogya-prod"
 
+# Domain
+domain_name   = "neeraj.bond"
+app_subdomain = "arogya"
+
 # Notifications
 ops_email        = "medilinkhub.team@gmail.com"
 ses_sender_email = "medilinkhub.team@gmail.com"

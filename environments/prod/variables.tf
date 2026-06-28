@@ -16,6 +16,8 @@ variable "rds_multi_az" { type = bool }
 variable "namespace" { type = string }
 variable "ops_email" { type = string }
 variable "ses_sender_email" { type = string }
+variable "domain_name" { type = string }
+variable "app_subdomain" { type = string }
 variable "groq_api_key" {
   type      = string
   sensitive = true
