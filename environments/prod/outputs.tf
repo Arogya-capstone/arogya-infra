@@ -4,7 +4,6 @@ output "ecr_registry" { value = module.ecr.registry_url }
 output "documents_bucket" { value = module.security.documents_bucket_name }
 output "rag_queue_url" { value = module.sqs.rag_processing_queue_url }
 output "appointment_queue_url" { value = module.sqs.appointment_events_queue_url }
-output "github_actions_role_arn" { value = module.irsa.github_actions_role_arn }
 output "user_service_role_arn" { value = module.irsa.user_service_role_arn }
 output "appointment_service_role_arn" { value = module.irsa.appointment_service_role_arn }
 output "health_service_role_arn" { value = module.irsa.health_service_role_arn }

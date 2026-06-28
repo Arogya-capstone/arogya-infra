@@ -23,10 +23,6 @@ rds_multi_az       = false
 # Kubernetes namespace
 namespace = "arogya-prod"
 
-# GitHub (for OIDC federation)
-github_org  = "Arogya-capstone"
-github_repo = "arogya-app"
-
 # Notifications
 ops_email        = "medilinkhub.team@gmail.com"
 ses_sender_email = "medilinkhub.team@gmail.com"

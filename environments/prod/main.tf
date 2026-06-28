@@ -197,8 +197,6 @@ module "irsa" {
   rag_processing_queue_arn     = module.sqs.rag_processing_queue_arn
   rag_processing_dlq_arn       = module.sqs.rag_processing_dlq_arn
   appointment_events_queue_arn = module.sqs.appointment_events_queue_arn
-  github_org                   = var.github_org
-  github_repo                  = var.github_repo
 }
 
 # ── Cross-module SSM Parameters (root-level to break security↔sqs/rds cycles) ─
