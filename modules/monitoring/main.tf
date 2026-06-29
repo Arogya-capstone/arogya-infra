@@ -127,6 +127,12 @@ resource "aws_iam_role_policy" "lambda_notification" {
         Resource = "*"
       },
       {
+        Sid      = "KMSDecrypt"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = [var.kms_key_arn]
+      },
+      {
         Sid      = "CloudWatchLogs"
         Effect   = "Allow"
         Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
@@ -200,6 +206,12 @@ resource "aws_iam_role_policy" "lambda_aiops" {
         Effect   = "Allow"
         Action   = ["sns:Publish"]
         Resource = [aws_sns_topic.ops_alarms.arn]
+      },
+      {
+        Sid      = "KMSForSNS"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = [var.kms_key_arn]
       },
       {
         Sid      = "CloudWatchLogsWrite"
