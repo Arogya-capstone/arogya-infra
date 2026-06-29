@@ -107,6 +107,7 @@ module "eks" {
   node_max_size      = var.node_max_size
   node_desired_size  = var.node_desired_size
   kms_key_arn        = local.kms_key_arn
+  admin_iam_arns     = var.admin_iam_arns
 }
 
 # ── ECR ───────────────────────────────────────────────────────────────────────

@@ -25,3 +25,8 @@ variable "node_desired_size" {
   default = 2
 }
 variable "kms_key_arn" { type = string }
+variable "admin_iam_arns" {
+  type        = list(string)
+  default     = []
+  description = "IAM user/role ARNs to grant EKS cluster admin access"
+}

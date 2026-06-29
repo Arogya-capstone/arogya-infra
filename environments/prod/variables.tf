@@ -27,3 +27,8 @@ variable "groq_api_key" {
   sensitive = true
   default   = "REPLACE_WITH_GROQ_KEY"
 }
+variable "admin_iam_arns" {
+  type        = list(string)
+  default     = []
+  description = "IAM user/role ARNs to grant EKS cluster admin access"
+}

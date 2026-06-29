@@ -75,6 +75,22 @@ module "eks" {
   tags = merge(local.common_tags, { Name = var.cluster_name })
 }
 
+resource "aws_eks_access_entry" "admins" {
+  for_each      = toset(var.admin_iam_arns)
+  cluster_name  = module.eks.cluster_name
+  principal_arn = each.value
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "admins" {
+  for_each      = toset(var.admin_iam_arns)
+  cluster_name  = module.eks.cluster_name
+  principal_arn = each.value
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+  access_scope { type = "cluster" }
+  depends_on    = [aws_eks_access_entry.admins]
+}
+
 # EBS CSI Driver IRSA
 resource "aws_iam_role" "ebs_csi" {
   name = "${var.cluster_name}-ebs-csi-role"
