@@ -30,4 +30,9 @@ app_subdomain = "arogya"
 # Notifications
 ops_email        = "medilinkhub.team@gmail.com"
 ses_sender_email = "medilinkhub.team@gmail.com"
-# last-updated: 2026-06-27T05:14:00Z
+# EKS admin access
+admin_iam_arns = [
+  "arn:aws:iam::371454942267:user/Neeraj"
+]
+
+# last-updated: 2026-06-29T00:00:00Z
