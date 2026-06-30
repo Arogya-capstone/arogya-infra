@@ -35,4 +35,6 @@ admin_iam_arns = [
   "arn:aws:iam::371454942267:user/Neeraj"
 ]
 
-# last-updated: 2026-06-29T00:00:00Z
+elb_hostname = "a5f20c7854c204acb8c55e4e41ed1ee9-252504159.us-east-1.elb.amazonaws.com"
+
+# last-updated: 2026-06-30T00:00:00Z
