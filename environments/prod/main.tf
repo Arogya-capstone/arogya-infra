@@ -65,6 +65,7 @@ resource "aws_kms_alias" "main" {
 locals {
   kms_key_arn = aws_kms_key.main.arn
   ssm_prefix  = "/${var.project}/${var.environment}"
+  cdn_ready   = var.elb_hostname != "pending"
 }
 
 # ── Security (Secrets Manager, S3, CloudTrail, Bedrock, SES, SSM) ─────────────
@@ -347,12 +348,6 @@ resource "aws_acm_certificate_validation" "frontend" {
   certificate_arn         = aws_acm_certificate.frontend.arn
   validation_record_fqdns = [for r in aws_route53_record.cert_validation : r.fqdn]
   timeouts { create = "10m" }
-}
-
-# elb_hostname is passed by the workflow, which reads it from SSM.
-# Bootstrap stores it after provisioning the ELB. Default "pending" skips CloudFront.
-locals {
-  cdn_ready = var.elb_hostname != "pending"
 }
 
 resource "aws_cloudfront_distribution" "frontend" {
