@@ -246,6 +246,73 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
   })
 }
 
+# ── WAF (attached to CloudFront) ─────────────────────────────────────────────
+resource "aws_wafv2_web_acl" "frontend" {
+  name  = "${var.project}-${var.environment}-waf"
+  scope = "CLOUDFRONT"
+
+  default_action { allow {} }
+
+  rule {
+    name     = "AWSCommonRules"
+    priority = 1
+    override_action { none {} }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project}-${var.environment}-common-rules"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "AWSKnownBadInputs"
+    priority = 2
+    override_action { none {} }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project}-${var.environment}-bad-inputs"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "RateLimit"
+    priority = 3
+    action { block {} }
+    statement {
+      rate_based_statement {
+        limit              = 2000
+        aggregate_key_type = "IP"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.project}-${var.environment}-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${var.project}-${var.environment}-waf"
+    sampled_requests_enabled   = true
+  }
+
+  tags = { Name = "${var.project}-${var.environment}-waf", Project = var.project }
+}
+
 # ── Route53 + ACM + CloudFront ────────────────────────────────────────────────
 
 resource "aws_route53_zone" "main" {
@@ -330,6 +397,8 @@ resource "aws_cloudfront_distribution" "frontend" {
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
+
+  web_acl_id = aws_wafv2_web_acl.frontend.arn
 
   tags = { Name = "${var.project}-${var.environment}-cdn", Project = var.project }
 }
