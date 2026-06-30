@@ -252,12 +252,16 @@ resource "aws_wafv2_web_acl" "frontend" {
   name  = "${var.project}-${var.environment}-waf"
   scope = "CLOUDFRONT"
 
-  default_action { allow {} }
+  default_action {
+    allow {}
+  }
 
   rule {
     name     = "AWSCommonRules"
     priority = 1
-    override_action { none {} }
+    override_action {
+      none {}
+    }
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
@@ -274,7 +278,9 @@ resource "aws_wafv2_web_acl" "frontend" {
   rule {
     name     = "AWSKnownBadInputs"
     priority = 2
-    override_action { none {} }
+    override_action {
+      none {}
+    }
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesKnownBadInputsRuleSet"
@@ -291,7 +297,9 @@ resource "aws_wafv2_web_acl" "frontend" {
   rule {
     name     = "RateLimit"
     priority = 3
-    action { block {} }
+    action {
+      block {}
+    }
     statement {
       rate_based_statement {
         limit              = 2000
