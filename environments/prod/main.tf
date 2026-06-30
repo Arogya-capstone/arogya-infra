@@ -65,6 +65,7 @@ resource "aws_kms_alias" "main" {
 locals {
   kms_key_arn = aws_kms_key.main.arn
   ssm_prefix  = "/${var.project}/${var.environment}"
+  cdn_ready   = var.elb_hostname != "pending"
 }
 
 # ── Security (Secrets Manager, S3, CloudTrail, Bedrock, SES, SSM) ─────────────
@@ -251,12 +252,16 @@ resource "aws_wafv2_web_acl" "frontend" {
   name  = "${var.project}-${var.environment}-waf"
   scope = "CLOUDFRONT"
 
-  default_action { allow {} }
+  default_action {
+    allow {}
+  }
 
   rule {
     name     = "AWSCommonRules"
     priority = 1
-    override_action { none {} }
+    override_action {
+      none {}
+    }
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
@@ -273,7 +278,9 @@ resource "aws_wafv2_web_acl" "frontend" {
   rule {
     name     = "AWSKnownBadInputs"
     priority = 2
-    override_action { none {} }
+    override_action {
+      none {}
+    }
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesKnownBadInputsRuleSet"
@@ -290,7 +297,9 @@ resource "aws_wafv2_web_acl" "frontend" {
   rule {
     name     = "RateLimit"
     priority = 3
-    action { block {} }
+    action {
+      block {}
+    }
     statement {
       rate_based_statement {
         limit              = 2000
@@ -347,12 +356,6 @@ resource "aws_acm_certificate_validation" "frontend" {
   certificate_arn         = aws_acm_certificate.frontend.arn
   validation_record_fqdns = [for r in aws_route53_record.cert_validation : r.fqdn]
   timeouts { create = "10m" }
-}
-
-# elb_hostname is passed by the workflow, which reads it from SSM.
-# Bootstrap stores it after provisioning the ELB. Default "pending" skips CloudFront.
-locals {
-  cdn_ready = var.elb_hostname != "pending"
 }
 
 resource "aws_cloudfront_distribution" "frontend" {
